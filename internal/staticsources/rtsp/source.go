@@ -163,6 +163,10 @@ func (s *Source) Run(params defs.StaticSourceRunParams) error {
 		WriteQueueSize:    s.WriteQueueSize,
 		UDPReadBufferSize: int(udpReadBufferSize),
 		AnyPortEnable:     params.Conf.RTSPAnyPort,
+		UDPSourcePortRange: [2]uint16{
+			uint16(params.Conf.RTSPUDPSourcePortRange[0]),
+			uint16(params.Conf.RTSPUDPSourcePortRange[1]),
+		},
 		OnRequest: func(req *base.Request) {
 			s.Log(logger.Debug, "[c->s] %v", req)
 		},
@@ -234,13 +238,13 @@ func (s *Source) runInner(c *gortsplib.Client, u *base.URL, pathConf *conf.Path)
 		Medias: medias,
 	}
 
-	var strm *stream.Stream
+	var subStream *stream.SubStream
 
 	rtsp.ToStream(
 		c,
 		desc2.Medias,
 		pathConf,
-		&strm,
+		&subStream,
 		s)
 
 	res := s.Parent.SetReady(defs.PathSourceStaticSetReadyReq{
@@ -254,7 +258,7 @@ func (s *Source) runInner(c *gortsplib.Client, u *base.URL, pathConf *conf.Path)
 
 	defer s.Parent.SetNotReady(defs.PathSourceStaticSetNotReadyReq{})
 
-	strm = res.Stream
+	subStream = res.SubStream
 
 	rangeHeader, err := createRangeHeader(pathConf)
 	if err != nil {
@@ -270,8 +274,8 @@ func (s *Source) runInner(c *gortsplib.Client, u *base.URL, pathConf *conf.Path)
 }
 
 // APISourceDescribe implements StaticSource.
-func (*Source) APISourceDescribe() defs.APIPathSourceOrReader {
-	return defs.APIPathSourceOrReader{
+func (*Source) APISourceDescribe() *defs.APIPathSource {
+	return &defs.APIPathSource{
 		Type: "rtspSource",
 		ID:   "",
 	}

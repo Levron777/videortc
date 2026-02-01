@@ -533,7 +533,7 @@ func (pm *pathManager) Describe(req defs.PathDescribeReq) defs.PathDescribeRes {
 }
 
 // AddPublisher is called by a publisher.
-func (pm *pathManager) AddPublisher(req defs.PathAddPublisherReq) (defs.Path, *stream.Stream, error) {
+func (pm *pathManager) AddPublisher(req defs.PathAddPublisherReq) (defs.Path, *stream.SubStream, error) {
 	req.Res = make(chan defs.PathAddPublisherRes)
 	select {
 	case pm.chAddPublisher <- req:
@@ -594,13 +594,13 @@ func (pm *pathManager) APIPathsList() (*defs.APIPathList, error) {
 		res := <-req.res
 
 		res.data = &defs.APIPathList{
-			Items: []*defs.APIPath{},
+			Items: []defs.APIPath{},
 		}
 
 		for _, pa := range res.paths {
 			item, err := pa.APIPathsGet(pathAPIPathsGetReq{})
 			if err == nil {
-				res.data.Items = append(res.data.Items, item)
+				res.data.Items = append(res.data.Items, *item)
 			}
 		}
 

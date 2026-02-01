@@ -3,38 +3,38 @@ module github.com/bluenviron/mediamtx
 go 1.25.0
 
 require (
-	code.cloudfoundry.org/bytefmt v0.61.0
+	code.cloudfoundry.org/bytefmt v0.62.0
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/MicahParks/jwkset v0.11.0
 	github.com/MicahParks/keyfunc/v3 v3.7.0
 	github.com/abema/go-mp4 v1.4.1
 	github.com/alecthomas/kong v1.13.0
 	github.com/asticode/go-astits v1.14.0
-	github.com/bluenviron/gohlslib/v2 v2.2.5-0.20260117214804-b8c1ff42629d
-	github.com/bluenviron/gortmplib v0.2.0
-	github.com/bluenviron/gortsplib/v5 v5.2.2
-	github.com/bluenviron/mediacommon/v2 v2.6.0
+	github.com/bluenviron/gohlslib/v2 v2.2.5
+	github.com/bluenviron/gortmplib v0.2.1
+	github.com/bluenviron/gortsplib/v5 v5.3.0
+	github.com/bluenviron/mediacommon/v2 v2.7.0
 	github.com/datarhei/gosrt v0.9.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gin-contrib/pprof v1.5.3
 	github.com/gin-gonic/gin v1.11.0
 	github.com/go-git/go-billy/v5 v5.7.0
 	github.com/go-git/go-git/v5 v5.16.4
-	github.com/golang-jwt/jwt/v5 v5.3.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/gookit/color v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
-	github.com/matthewhartstonge/argon2 v1.4.4
+	github.com/matthewhartstonge/argon2 v1.4.5
 	github.com/minio/selfupdate v0.6.0
-	github.com/pion/ice/v4 v4.1.0
+	github.com/pion/ice/v4 v4.2.0
 	github.com/pion/interceptor v0.1.43
 	github.com/pion/logging v0.2.4
 	github.com/pion/rtcp v1.2.16
 	github.com/pion/rtp v1.10.0
 	github.com/pion/sdp/v3 v3.0.17
-	github.com/pion/transport/v3 v3.1.1
-	github.com/pion/webrtc/v4 v4.2.1
+	github.com/pion/transport/v4 v4.0.1
+	github.com/pion/webrtc/v4 v4.2.3
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.47.0
 	golang.org/x/sys v0.40.0
@@ -74,14 +74,14 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
-	github.com/pion/datachannel v1.5.10 // indirect
-	github.com/pion/dtls/v3 v3.0.9 // indirect
+	github.com/pion/datachannel v1.6.0 // indirect
+	github.com/pion/dtls/v3 v3.0.10 // indirect
 	github.com/pion/mdns/v2 v2.1.0 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
-	github.com/pion/sctp v1.9.0 // indirect
-	github.com/pion/srtp/v3 v3.0.9 // indirect
-	github.com/pion/stun/v3 v3.0.2 // indirect
-	github.com/pion/turn/v4 v4.1.3 // indirect
+	github.com/pion/sctp v1.9.2 // indirect
+	github.com/pion/srtp/v3 v3.0.10 // indirect
+	github.com/pion/stun/v3 v3.1.1 // indirect
+	github.com/pion/turn/v4 v4.1.4 // indirect
 	github.com/pjbgf/sha1cd v0.3.2 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect

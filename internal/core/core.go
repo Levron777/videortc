@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/alecthomas/kong"
-	"github.com/bluenviron/gortsplib/v5"
 	"github.com/gin-gonic/gin"
 
 	"github.com/bluenviron/mediamtx/internal/api"
@@ -161,8 +160,8 @@ func New(args []string) (*Core, bool) {
 	}
 
 	if cli.Upgrade {
-		err = upgrade()
-		if err != nil {
+		err = upgrade() //nolint:staticcheck
+		if err != nil { //nolint:staticcheck
 			fmt.Printf("ERR: %v\n", err)
 			os.Exit(1)
 		}
@@ -293,7 +292,7 @@ func (p *Core) createResources(initial bool) error {
 	if p.logger == nil {
 		i := &logger.Logger{
 			Level:        logger.Level(p.conf.LogLevel),
-			Destinations: p.conf.LogDestinations,
+			Destinations: p.conf.LogDestinations.ToDestinations(),
 			Structured:   p.conf.LogStructured,
 			File:         p.conf.LogFile,
 			SysLogPrefix: p.conf.SysLogPrefix,
@@ -445,9 +444,6 @@ func (p *Core) createResources(initial bool) error {
 		(p.conf.RTSPEncryption == conf.EncryptionNo ||
 			p.conf.RTSPEncryption == conf.EncryptionOptional) &&
 		p.rtspServer == nil {
-		_, useUDP := p.conf.RTSPTransports[gortsplib.ProtocolUDP]
-		_, useMulticast := p.conf.RTSPTransports[gortsplib.ProtocolUDPMulticast]
-
 		udpReadBufferSize := p.conf.UDPReadBufferSize
 		if p.conf.RTSPUDPReadBufferSize != nil {
 			udpReadBufferSize = *p.conf.RTSPUDPReadBufferSize
@@ -455,13 +451,12 @@ func (p *Core) createResources(initial bool) error {
 
 		i := &rtsp.Server{
 			Address:             p.conf.RTSPAddress,
-			AuthMethods:         p.conf.RTSPAuthMethods,
+			AuthMethods:         p.conf.RTSPAuthMethods.ToAuthMethods(),
 			UDPReadBufferSize:   udpReadBufferSize,
 			ReadTimeout:         p.conf.ReadTimeout,
 			WriteTimeout:        p.conf.WriteTimeout,
 			WriteQueueSize:      p.conf.WriteQueueSize,
-			UseUDP:              useUDP,
-			UseMulticast:        useMulticast,
+			RTSPTransports:      p.conf.RTSPTransports,
 			RTPAddress:          p.conf.RTPAddress,
 			RTCPAddress:         p.conf.RTCPAddress,
 			MulticastIPRange:    p.conf.MulticastIPRange,
@@ -491,9 +486,6 @@ func (p *Core) createResources(initial bool) error {
 		(p.conf.RTSPEncryption == conf.EncryptionStrict ||
 			p.conf.RTSPEncryption == conf.EncryptionOptional) &&
 		p.rtspsServer == nil {
-		_, useUDP := p.conf.RTSPTransports[gortsplib.ProtocolUDP]
-		_, useMulticast := p.conf.RTSPTransports[gortsplib.ProtocolUDPMulticast]
-
 		udpReadBufferSize := p.conf.UDPReadBufferSize
 		if p.conf.RTSPUDPReadBufferSize != nil {
 			udpReadBufferSize = *p.conf.RTSPUDPReadBufferSize
@@ -501,13 +493,12 @@ func (p *Core) createResources(initial bool) error {
 
 		i := &rtsp.Server{
 			Address:             p.conf.RTSPSAddress,
-			AuthMethods:         p.conf.RTSPAuthMethods,
+			AuthMethods:         p.conf.RTSPAuthMethods.ToAuthMethods(),
 			UDPReadBufferSize:   udpReadBufferSize,
 			ReadTimeout:         p.conf.ReadTimeout,
 			WriteTimeout:        p.conf.WriteTimeout,
 			WriteQueueSize:      p.conf.WriteQueueSize,
-			UseUDP:              useUDP,
-			UseMulticast:        useMulticast,
+			RTSPTransports:      p.conf.RTSPTransports,
 			RTPAddress:          p.conf.SRTPAddress,
 			RTCPAddress:         p.conf.SRTCPAddress,
 			MulticastIPRange:    p.conf.MulticastIPRange,
