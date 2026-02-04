@@ -19,62 +19,17 @@ import (
 	"github.com/bluenviron/mediacommon/v2/pkg/codecs/opus"
 	"github.com/bluenviron/mediacommon/v2/pkg/codecs/vp9"
 	"github.com/bluenviron/mediacommon/v2/pkg/formats/fmp4"
-	mcodecs "github.com/bluenviron/mediacommon/v2/pkg/formats/mp4/codecs"
+	"github.com/bluenviron/mediacommon/v2/pkg/formats/mp4"
 
+	"github.com/bluenviron/mediamtx/internal/codecprocessor"
 	"github.com/bluenviron/mediamtx/internal/defs"
 	"github.com/bluenviron/mediamtx/internal/logger"
 	"github.com/bluenviron/mediamtx/internal/unit"
 )
 
-var (
-	av1DefaultSequenceHeader = []byte{
-		8, 0, 0, 0, 66, 167, 191, 228, 96, 13, 0, 64,
-	}
-
-	h265DefaultVPS = []byte{
-		0x40, 0x01, 0x0c, 0x01, 0xff, 0xff, 0x02, 0x20,
-		0x00, 0x00, 0x03, 0x00, 0xb0, 0x00, 0x00, 0x03,
-		0x00, 0x00, 0x03, 0x00, 0x7b, 0x18, 0xb0, 0x24,
-	}
-
-	h265DefaultSPS = []byte{
-		0x42, 0x01, 0x01, 0x02, 0x20, 0x00, 0x00, 0x03,
-		0x00, 0xb0, 0x00, 0x00, 0x03, 0x00, 0x00, 0x03,
-		0x00, 0x7b, 0xa0, 0x07, 0x82, 0x00, 0x88, 0x7d,
-		0xb6, 0x71, 0x8b, 0x92, 0x44, 0x80, 0x53, 0x88,
-		0x88, 0x92, 0xcf, 0x24, 0xa6, 0x92, 0x72, 0xc9,
-		0x12, 0x49, 0x22, 0xdc, 0x91, 0xaa, 0x48, 0xfc,
-		0xa2, 0x23, 0xff, 0x00, 0x01, 0x00, 0x01, 0x6a,
-		0x02, 0x02, 0x02, 0x01,
-	}
-
-	h265DefaultPPS = []byte{
-		0x44, 0x01, 0xc0, 0x25, 0x2f, 0x05, 0x32, 0x40,
-	}
-
-	h264DefaultSPS = []byte{ // 1920x1080 baseline
-		0x67, 0x42, 0xc0, 0x28, 0xd9, 0x00, 0x78, 0x02,
-		0x27, 0xe5, 0x84, 0x00, 0x00, 0x03, 0x00, 0x04,
-		0x00, 0x00, 0x03, 0x00, 0xf0, 0x3c, 0x60, 0xc9, 0x20,
-	}
-
-	h264DefaultPPS = []byte{0x08, 0x06, 0x07, 0x08}
-
-	mpeg4VideoDefaultConfig = []byte{
-		0x00, 0x00, 0x01, 0xb0, 0x01, 0x00, 0x00, 0x01,
-		0xb5, 0x89, 0x13, 0x00, 0x00, 0x01, 0x00, 0x00,
-		0x00, 0x01, 0x20, 0x00, 0xc4, 0x8d, 0x88, 0x00,
-		0xf5, 0x3c, 0x04, 0x87, 0x14, 0x63, 0x00, 0x00,
-		0x01, 0xb2, 0x4c, 0x61, 0x76, 0x63, 0x35, 0x38,
-		0x2e, 0x31, 0x33, 0x34, 0x2e, 0x31, 0x30, 0x30,
-	}
-
-	mpeg1VideoDefaultConfig = []byte{
-		0x00, 0x00, 0x01, 0xb3, 0x78, 0x04, 0x38, 0x35,
-		0xff, 0xff, 0xe0, 0x18, 0x00, 0x00, 0x01, 0xb5,
-		0x14, 0x4a, 0x00, 0x01, 0x00, 0x00,
-	}
-)
+var av1DefaultSequenceHeader = []byte{
+	8, 0, 0, 0, 66, 167, 191, 228, 96, 13, 0, 64,
+}
 
 func mpeg1audioChannelCount(cm mpeg1audio.ChannelMode) int {
 	switch cm {
@@ -143,12 +98,6 @@ func jpegExtractSize(image []byte) (int, int, error) {
 	}
 }
 
-type formatFMP4Sample struct {
-	*fmp4.Sample
-	dts int64
-	ntp time.Time
-}
-
 type formatFMP4 struct {
 	ri *recorderInstance
 
@@ -161,16 +110,19 @@ type formatFMP4 struct {
 func (f *formatFMP4) initialize() bool {
 	nextID := 1
 
-	addTrack := func(format rtspformat.Format, codec mcodecs.Codec) *formatFMP4Track {
+	addTrack := func(format rtspformat.Format, codec mp4.Codec) *formatFMP4Track {
+		initTrack := &fmp4.InitTrack{
+			TimeScale: uint32(format.ClockRate()),
+			Codec:     codec,
+		}
+		initTrack.ID = nextID
+		nextID++
+
 		track := &formatFMP4Track{
 			f:         f,
-			id:        nextID,
-			clockRate: uint32(format.ClockRate()),
-			codec:     codec,
+			initTrack: initTrack,
 		}
-		track.initialize()
 
-		nextID++
 		f.tracks = append(f.tracks, track)
 		return track
 	}
@@ -181,7 +133,7 @@ func (f *formatFMP4) initialize() bool {
 
 			switch forma := forma.(type) {
 			case *rtspformat.AV1:
-				codec := &mcodecs.AV1{
+				codec := &mp4.CodecAV1{
 					SequenceHeader: av1DefaultSequenceHeader,
 				}
 				track := addTrack(forma, codec)
@@ -228,7 +180,7 @@ func (f *formatFMP4) initialize() bool {
 							return err
 						}
 
-						return track.write(&formatFMP4Sample{
+						return track.write(&sample{
 							Sample: &sampl,
 							dts:    u.PTS,
 							ntp:    u.NTP,
@@ -236,7 +188,7 @@ func (f *formatFMP4) initialize() bool {
 					})
 
 			case *rtspformat.VP9:
-				codec := &mcodecs.VP9{
+				codec := &mp4.CodecVP9{
 					Width:             1280,
 					Height:            720,
 					Profile:           1,
@@ -305,7 +257,7 @@ func (f *formatFMP4) initialize() bool {
 							firstReceived = true
 						}
 
-						return track.write(&formatFMP4Sample{
+						return track.write(&sample{
 							Sample: &fmp4.Sample{
 								IsNonSyncSample: !randomAccess,
 								Payload:         u.Payload.(unit.PayloadVP9),
@@ -321,12 +273,12 @@ func (f *formatFMP4) initialize() bool {
 			case *rtspformat.H265:
 				vps, sps, pps := forma.SafeParams()
 				if vps == nil || sps == nil || pps == nil {
-					vps = h265DefaultVPS
-					sps = h265DefaultSPS
-					pps = h265DefaultPPS
+					vps = codecprocessor.H265DefaultVPS
+					sps = codecprocessor.H265DefaultSPS
+					pps = codecprocessor.H265DefaultPPS
 				}
 
-				codec := &mcodecs.H265{
+				codec := &mp4.CodecH265{
 					VPS: vps,
 					SPS: sps,
 					PPS: pps,
@@ -396,7 +348,7 @@ func (f *formatFMP4) initialize() bool {
 							return err
 						}
 
-						return track.write(&formatFMP4Sample{
+						return track.write(&sample{
 							Sample: &sampl,
 							dts:    dts,
 							ntp:    u.NTP,
@@ -406,11 +358,11 @@ func (f *formatFMP4) initialize() bool {
 			case *rtspformat.H264:
 				sps, pps := forma.SafeParams()
 				if sps == nil || pps == nil {
-					sps = h264DefaultSPS
-					pps = h264DefaultPPS
+					sps = codecprocessor.H264DefaultSPS
+					pps = codecprocessor.H264DefaultPPS
 				}
 
-				codec := &mcodecs.H264{
+				codec := &mp4.CodecH264{
 					SPS: sps,
 					PPS: pps,
 				}
@@ -472,7 +424,7 @@ func (f *formatFMP4) initialize() bool {
 							return err
 						}
 
-						return track.write(&formatFMP4Sample{
+						return track.write(&sample{
 							Sample: &sampl,
 							dts:    dts,
 							ntp:    u.NTP,
@@ -483,10 +435,10 @@ func (f *formatFMP4) initialize() bool {
 				config := forma.SafeParams()
 
 				if config == nil {
-					config = mpeg4VideoDefaultConfig
+					config = codecprocessor.MPEG4VideoDefaultConfig
 				}
 
-				codec := &mcodecs.MPEG4Video{
+				codec := &mp4.CodecMPEG4Video{
 					Config: config,
 				}
 				track := addTrack(forma, codec)
@@ -529,7 +481,7 @@ func (f *formatFMP4) initialize() bool {
 						}
 						lastPTS = u.PTS
 
-						return track.write(&formatFMP4Sample{
+						return track.write(&sample{
 							Sample: &fmp4.Sample{
 								Payload:         u.Payload.(unit.PayloadMPEG4Video),
 								IsNonSyncSample: !randomAccess,
@@ -540,8 +492,8 @@ func (f *formatFMP4) initialize() bool {
 					})
 
 			case *rtspformat.MPEG1Video:
-				codec := &mcodecs.MPEG1Video{
-					Config: mpeg1VideoDefaultConfig,
+				codec := &mp4.CodecMPEG1Video{
+					Config: codecprocessor.MPEG1VideoDefaultConfig,
 				}
 				track := addTrack(forma, codec)
 
@@ -580,7 +532,7 @@ func (f *formatFMP4) initialize() bool {
 						}
 						lastPTS = u.PTS
 
-						return track.write(&formatFMP4Sample{
+						return track.write(&sample{
 							Sample: &fmp4.Sample{
 								Payload:         u.Payload.(unit.PayloadMPEG1Video),
 								IsNonSyncSample: !randomAccess,
@@ -591,7 +543,7 @@ func (f *formatFMP4) initialize() bool {
 					})
 
 			case *rtspformat.MJPEG:
-				codec := &mcodecs.MJPEG{
+				codec := &mp4.CodecMJPEG{
 					Width:  800,
 					Height: 600,
 				}
@@ -618,7 +570,7 @@ func (f *formatFMP4) initialize() bool {
 							f.updateCodecParams()
 						}
 
-						return track.write(&formatFMP4Sample{
+						return track.write(&sample{
 							Sample: &fmp4.Sample{
 								Payload: u.Payload.(unit.PayloadMJPEG),
 							},
@@ -628,7 +580,7 @@ func (f *formatFMP4) initialize() bool {
 					})
 
 			case *rtspformat.Opus:
-				codec := &mcodecs.Opus{
+				codec := &mp4.CodecOpus{
 					ChannelCount: forma.ChannelCount,
 				}
 				track := addTrack(forma, codec)
@@ -644,7 +596,7 @@ func (f *formatFMP4) initialize() bool {
 						pts := u.PTS
 
 						for _, packet := range u.Payload.(unit.PayloadOpus) {
-							err := track.write(&formatFMP4Sample{
+							err := track.write(&sample{
 								Sample: &fmp4.Sample{
 									Payload: packet,
 								},
@@ -662,7 +614,7 @@ func (f *formatFMP4) initialize() bool {
 					})
 
 			case *rtspformat.MPEG4Audio:
-				codec := &mcodecs.MPEG4Audio{
+				codec := &mp4.CodecMPEG4Audio{
 					Config: *forma.Config,
 				}
 				track := addTrack(forma, codec)
@@ -678,7 +630,7 @@ func (f *formatFMP4) initialize() bool {
 						for i, au := range u.Payload.(unit.PayloadMPEG4Audio) {
 							pts := u.PTS + int64(i)*mpeg4audio.SamplesPerAccessUnit
 
-							err := track.write(&formatFMP4Sample{
+							err := track.write(&sample{
 								Sample: &fmp4.Sample{
 									Payload: au,
 								},
@@ -695,7 +647,7 @@ func (f *formatFMP4) initialize() bool {
 
 			case *rtspformat.MPEG4AudioLATM:
 				if !forma.CPresent {
-					codec := &mcodecs.MPEG4Audio{
+					codec := &mp4.CodecMPEG4Audio{
 						Config: *forma.StreamMuxConfig.Programs[0].Layers[0].AudioSpecificConfig,
 					}
 					track := addTrack(forma, codec)
@@ -715,7 +667,7 @@ func (f *formatFMP4) initialize() bool {
 								return err
 							}
 
-							return track.write(&formatFMP4Sample{
+							return track.write(&sample{
 								Sample: &fmp4.Sample{
 									Payload: ame.Payloads[0][0][0],
 								},
@@ -726,7 +678,7 @@ func (f *formatFMP4) initialize() bool {
 				}
 
 			case *rtspformat.MPEG1Audio:
-				codec := &mcodecs.MPEG1Audio{
+				codec := &mp4.CodecMPEG1Audio{
 					SampleRate:   32000,
 					ChannelCount: 2,
 				}
@@ -758,7 +710,7 @@ func (f *formatFMP4) initialize() bool {
 								f.updateCodecParams()
 							}
 
-							err = track.write(&formatFMP4Sample{
+							err = track.write(&sample{
 								Sample: &fmp4.Sample{
 									Payload: frame,
 								},
@@ -777,7 +729,7 @@ func (f *formatFMP4) initialize() bool {
 					})
 
 			case *rtspformat.AC3:
-				codec := &mcodecs.AC3{
+				codec := &mp4.CodecAC3{
 					SampleRate:   forma.SampleRate,
 					ChannelCount: forma.ChannelCount,
 					Fscod:        0,
@@ -816,6 +768,7 @@ func (f *formatFMP4) initialize() bool {
 								parsed = true
 								codec.SampleRate = syncInfo.SampleRate()
 								codec.ChannelCount = bsi.ChannelCount()
+								codec.Fscod = syncInfo.Fscod
 								codec.Bsid = bsi.Bsid
 								codec.Bsmod = bsi.Bsmod
 								codec.Acmod = bsi.Acmod
@@ -826,7 +779,7 @@ func (f *formatFMP4) initialize() bool {
 
 							pts := u.PTS + int64(i)*ac3.SamplesPerFrame
 
-							err = track.write(&formatFMP4Sample{
+							err = track.write(&sample{
 								Sample: &fmp4.Sample{
 									Payload: frame,
 								},
@@ -845,7 +798,7 @@ func (f *formatFMP4) initialize() bool {
 				// TODO
 
 			case *rtspformat.G711:
-				codec := &mcodecs.LPCM{
+				codec := &mp4.CodecLPCM{
 					LittleEndian: false,
 					BitDepth:     16,
 					SampleRate:   forma.SampleRate,
@@ -872,7 +825,7 @@ func (f *formatFMP4) initialize() bool {
 							lpcm = al
 						}
 
-						return track.write(&formatFMP4Sample{
+						return track.write(&sample{
 							Sample: &fmp4.Sample{
 								Payload: lpcm,
 							},
@@ -882,7 +835,7 @@ func (f *formatFMP4) initialize() bool {
 					})
 
 			case *rtspformat.LPCM:
-				codec := &mcodecs.LPCM{
+				codec := &mp4.CodecLPCM{
 					LittleEndian: false,
 					BitDepth:     forma.BitDepth,
 					SampleRate:   forma.SampleRate,
@@ -898,7 +851,7 @@ func (f *formatFMP4) initialize() bool {
 							return nil
 						}
 
-						return track.write(&formatFMP4Sample{
+						return track.write(&sample{
 							Sample: &fmp4.Sample{
 								Payload: u.Payload.(unit.PayloadLPCM),
 							},

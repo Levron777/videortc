@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bluenviron/gortmplib"
-	"github.com/bluenviron/gortmplib/pkg/codecs"
+	"github.com/bluenviron/gortsplib/v5/pkg/format"
 	"github.com/bluenviron/mediamtx/internal/conf"
 	"github.com/bluenviron/mediamtx/internal/defs"
 	"github.com/bluenviron/mediamtx/internal/test"
@@ -118,21 +118,16 @@ func TestSource(t *testing.T) {
 					require.NoError(t, err)
 
 					w := &gortmplib.Writer{
-						Conn: conn,
-						Tracks: []*gortmplib.Track{
-							{Codec: &codecs.H264{
-								SPS: test.FormatH264.SPS,
-								PPS: test.FormatH264.PPS,
-							}},
-							{Codec: &codecs.MPEG4Audio{
-								Config: test.FormatMPEG4Audio.Config,
-							}},
-						},
+						Conn:   conn,
+						Tracks: []format.Format{test.FormatH264, test.FormatMPEG4Audio},
 					}
 					err = w.Initialize()
 					require.NoError(t, err)
 
-					err = w.WriteMPEG4Audio(w.Tracks[1], 2*time.Second, []byte{5, 2, 3, 4})
+					err = w.WriteH264(test.FormatH264, 2*time.Second, 2*time.Second, [][]byte{{5, 2, 3, 4}})
+					require.NoError(t, err)
+
+					err = w.WriteH264(test.FormatH264, 3*time.Second, 3*time.Second, [][]byte{{5, 2, 3, 4}})
 					require.NoError(t, err)
 
 					break

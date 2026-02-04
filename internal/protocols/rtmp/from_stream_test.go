@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/bluenviron/gortmplib"
-	"github.com/bluenviron/gortmplib/pkg/codecs"
 	"github.com/bluenviron/gortsplib/v5/pkg/description"
 	"github.com/bluenviron/gortsplib/v5/pkg/format"
+	"github.com/bluenviron/mediamtx/internal/codecprocessor"
 	"github.com/bluenviron/mediamtx/internal/logger"
 	"github.com/bluenviron/mediamtx/internal/stream"
 	"github.com/bluenviron/mediamtx/internal/test"
@@ -19,111 +19,423 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var (
-	h265DefaultVPS = []byte{
-		0x40, 0x01, 0x0c, 0x01, 0xff, 0xff, 0x02, 0x20,
-		0x00, 0x00, 0x03, 0x00, 0xb0, 0x00, 0x00, 0x03,
-		0x00, 0x00, 0x03, 0x00, 0x7b, 0x18, 0xb0, 0x24,
-	}
-
-	h265DefaultSPS = []byte{
-		0x42, 0x01, 0x01, 0x02, 0x20, 0x00, 0x00, 0x03,
-		0x00, 0xb0, 0x00, 0x00, 0x03, 0x00, 0x00, 0x03,
-		0x00, 0x7b, 0xa0, 0x07, 0x82, 0x00, 0x88, 0x7d,
-		0xb6, 0x71, 0x8b, 0x92, 0x44, 0x80, 0x53, 0x88,
-		0x88, 0x92, 0xcf, 0x24, 0xa6, 0x92, 0x72, 0xc9,
-		0x12, 0x49, 0x22, 0xdc, 0x91, 0xaa, 0x48, 0xfc,
-		0xa2, 0x23, 0xff, 0x00, 0x01, 0x00, 0x01, 0x6a,
-		0x02, 0x02, 0x02, 0x01,
-	}
-
-	h265DefaultPPS = []byte{
-		0x44, 0x01, 0xc0, 0x25, 0x2f, 0x05, 0x32, 0x40,
-	}
-
-	h264DefaultSPS = []byte{ // 1920x1080 baseline
-		0x67, 0x42, 0xc0, 0x28, 0xd9, 0x00, 0x78, 0x02,
-		0x27, 0xe5, 0x84, 0x00, 0x00, 0x03, 0x00, 0x04,
-		0x00, 0x00, 0x03, 0x00, 0xf0, 0x3c, 0x60, 0xc9, 0x20,
-	}
-
-	h264DefaultPPS = []byte{0x08, 0x06, 0x07, 0x08}
-)
-
 func TestFromStream(t *testing.T) {
-	h265VPS := []byte{
-		0x40, 0x01, 0x0c, 0x01, 0xff, 0xff, 0x01, 0x60,
-		0x00, 0x00, 0x03, 0x00, 0x90, 0x00, 0x00, 0x03,
-		0x00, 0x00, 0x03, 0x00, 0x78, 0xba, 0x02, 0x40,
-	}
-	h265SPS := []byte{
-		0x42, 0x01, 0x01, 0x01, 0x60, 0x00, 0x00, 0x03,
-		0x00, 0x90, 0x00, 0x00, 0x03, 0x00, 0x00, 0x03,
-		0x00, 0x78, 0xa0, 0x03, 0xc0, 0x80, 0x11, 0x07,
-		0xcb, 0x96, 0xe9, 0x29, 0x30, 0xbc, 0x05, 0xa0,
-		0x20, 0x00, 0x00, 0x03, 0x00, 0x20, 0x00, 0x00,
-		0x03, 0x03, 0xc1,
-	}
-	h265PPS := []byte{
-		0x44, 0x01, 0xc0, 0x73, 0xc1, 0x89,
-	}
+	for _, ca := range []string{
+		"h264 + aac",
+		"av1",
+		"vp9",
+		"h265",
+		"h264",
+		"opus",
+		"aac",
+		"mp3",
+		"ac-3",
+		"pcma",
+		"pcmu",
+		"lpcm",
+		"h265 + h264 + vp9 + av1 + opus + aac",
+	} {
+		t.Run(ca, func(t *testing.T) {
+			var medias []*description.Media
 
-	cases := []struct {
-		name           string
-		medias         []*description.Media
-		expectedTracks []*gortmplib.Track
-		writeUnits     func([]*description.Media, *stream.SubStream)
-	}{
-		{
-			name: "h264 + aac",
-			medias: []*description.Media{
-				{
-					Formats: []format.Format{test.FormatH264},
-				},
-				{
-					Formats: []format.Format{test.FormatMPEG4Audio},
-				},
-			},
-			expectedTracks: []*gortmplib.Track{
-				{Codec: &codecs.H264{
-					SPS: test.FormatH264.SPS,
-					PPS: test.FormatH264.PPS,
-				}},
-				{Codec: &codecs.MPEG4Audio{
-					Config: test.FormatMPEG4Audio.Config,
-				}},
-			},
-			writeUnits: func(medias []*description.Media, subStream *stream.SubStream) {
-				subStream.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
+			switch ca {
+			case "h264 + aac":
+				medias = []*description.Media{
+					{
+						Formats: []format.Format{test.FormatH264},
+					},
+					{
+						Formats: []format.Format{test.FormatMPEG4Audio},
+					},
+				}
+
+			case "av1":
+				medias = []*description.Media{
+					{
+						Formats: []format.Format{&format.AV1{
+							PayloadTyp: 96,
+						}},
+					},
+				}
+
+			case "vp9":
+				medias = []*description.Media{
+					{
+						Formats: []format.Format{&format.VP9{
+							PayloadTyp: 96,
+						}},
+					},
+				}
+
+			case "h265":
+				medias = []*description.Media{
+					{
+						Formats: []format.Format{
+							&format.H265{
+								PayloadTyp: 96,
+								VPS: []byte{
+									0x40, 0x01, 0x0c, 0x01, 0xff, 0xff, 0x01, 0x60,
+									0x00, 0x00, 0x03, 0x00, 0x90, 0x00, 0x00, 0x03,
+									0x00, 0x00, 0x03, 0x00, 0x78, 0xba, 0x02, 0x40,
+								},
+								SPS: []byte{
+									0x42, 0x01, 0x01, 0x01, 0x60, 0x00, 0x00, 0x03,
+									0x00, 0x90, 0x00, 0x00, 0x03, 0x00, 0x00, 0x03,
+									0x00, 0x78, 0xa0, 0x03, 0xc0, 0x80, 0x11, 0x07,
+									0xcb, 0x96, 0xe9, 0x29, 0x30, 0xbc, 0x05, 0xa0,
+									0x20, 0x00, 0x00, 0x03, 0x00, 0x20, 0x00, 0x00,
+									0x03, 0x03, 0xc1,
+								},
+								PPS: []byte{
+									0x44, 0x01, 0xc0, 0x73, 0xc1, 0x89,
+								},
+							},
+						},
+					},
+				}
+
+			case "h264":
+				medias = []*description.Media{
+					{
+						Formats: []format.Format{test.FormatH264},
+					},
+				}
+
+			case "opus":
+				medias = []*description.Media{
+					{
+						Formats: []format.Format{&format.Opus{
+							PayloadTyp:   96,
+							ChannelCount: 2,
+						}},
+					},
+				}
+
+			case "aac":
+				medias = []*description.Media{
+					{
+						Formats: []format.Format{test.FormatMPEG4Audio},
+					},
+				}
+
+			case "mp3":
+				medias = []*description.Media{
+					{
+						Formats: []format.Format{&format.MPEG1Audio{}},
+					},
+				}
+
+			case "ac-3":
+				medias = []*description.Media{
+					{
+						Formats: []format.Format{&format.AC3{
+							SampleRate:   44100,
+							ChannelCount: 2,
+						}},
+					},
+				}
+
+			case "pcma":
+				medias = []*description.Media{
+					{
+						Formats: []format.Format{&format.G711{
+							MULaw:        false,
+							SampleRate:   8000,
+							ChannelCount: 1,
+						}},
+					},
+				}
+
+			case "pcmu":
+				medias = []*description.Media{
+					{
+						Formats: []format.Format{&format.G711{
+							MULaw:        true,
+							SampleRate:   8000,
+							ChannelCount: 1,
+						}},
+					},
+				}
+
+			case "lpcm":
+				medias = []*description.Media{
+					{
+						Formats: []format.Format{&format.LPCM{
+							BitDepth:     16,
+							SampleRate:   44100,
+							ChannelCount: 2,
+						}},
+					},
+				}
+
+			case "h265 + h264 + vp9 + av1 + opus + aac":
+				medias = []*description.Media{
+					{
+						Formats: []format.Format{&format.H265{}},
+					},
+					{
+						Formats: []format.Format{&format.H264{}},
+					},
+					{
+						Formats: []format.Format{&format.VP9{}},
+					},
+					{
+						Formats: []format.Format{&format.AV1{}},
+					},
+					{
+						Formats: []format.Format{&format.Opus{
+							PayloadTyp:   96,
+							ChannelCount: 2,
+						}},
+					},
+					{
+						Formats: []format.Format{&format.MPEG4Audio{
+							PayloadTyp:       96,
+							Config:           test.FormatMPEG4Audio.Config,
+							SizeLength:       13,
+							IndexLength:      3,
+							IndexDeltaLength: 3,
+						}},
+					},
+				}
+			}
+
+			strm := &stream.Stream{
+				WriteQueueSize:     512,
+				RTPMaxPayloadSize:  1450,
+				Desc:               &description.Session{Medias: medias},
+				GenerateRTPPackets: true,
+				Parent:             test.NilLogger,
+			}
+			err := strm.Initialize()
+			require.NoError(t, err)
+
+			ln, err := net.Listen("tcp", "127.0.0.1:9121")
+			require.NoError(t, err)
+			defer ln.Close()
+
+			done := make(chan struct{})
+
+			go func() {
+				u, err2 := url.Parse("rtmp://127.0.0.1:9121/stream")
+				require.NoError(t, err2)
+
+				c := &gortmplib.Client{
+					URL: u,
+				}
+				err2 = c.Initialize(context.Background())
+				require.NoError(t, err2)
+
+				r := &gortmplib.Reader{
+					Conn: c,
+				}
+				err2 = r.Initialize()
+				require.NoError(t, err2)
+
+				switch ca {
+				case "h264 + aac":
+					require.Equal(t, []format.Format{
+						&format.H264{
+							SPS:               test.FormatH264.SPS,
+							PPS:               test.FormatH264.PPS,
+							PacketizationMode: 1,
+							PayloadTyp:        96,
+						},
+						&format.MPEG4Audio{
+							PayloadTyp:       96,
+							Config:           test.FormatMPEG4Audio.Config,
+							SizeLength:       13,
+							IndexLength:      3,
+							IndexDeltaLength: 3,
+						},
+					}, r.Tracks())
+
+				case "av1":
+					require.Equal(t, []format.Format{
+						&format.AV1{
+							PayloadTyp: 96,
+						},
+					}, r.Tracks())
+
+				case "vp9":
+					require.Equal(t, []format.Format{
+						&format.VP9{
+							PayloadTyp: 96,
+						},
+					}, r.Tracks())
+
+				case "h265":
+					require.Equal(t, []format.Format{
+						&format.H265{
+							VPS: []byte{
+								0x40, 0x01, 0x0c, 0x01, 0xff, 0xff, 0x01, 0x60,
+								0x00, 0x00, 0x03, 0x00, 0x90, 0x00, 0x00, 0x03,
+								0x00, 0x00, 0x03, 0x00, 0x78, 0xba, 0x02, 0x40,
+							},
+							SPS: []byte{
+								0x42, 0x01, 0x01, 0x01, 0x60, 0x00, 0x00, 0x03,
+								0x00, 0x90, 0x00, 0x00, 0x03, 0x00, 0x00, 0x03,
+								0x00, 0x78, 0xa0, 0x03, 0xc0, 0x80, 0x11, 0x07,
+								0xcb, 0x96, 0xe9, 0x29, 0x30, 0xbc, 0x05, 0xa0,
+								0x20, 0x00, 0x00, 0x03, 0x00, 0x20, 0x00, 0x00,
+								0x03, 0x03, 0xc1,
+							},
+							PPS: []byte{
+								0x44, 0x01, 0xc0, 0x73, 0xc1, 0x89,
+							},
+							PayloadTyp: 96,
+						},
+					}, r.Tracks())
+
+				case "h264":
+					require.Equal(t, []format.Format{
+						&format.H264{
+							SPS:               test.FormatH264.SPS,
+							PPS:               test.FormatH264.PPS,
+							PacketizationMode: 1,
+							PayloadTyp:        96,
+						},
+					}, r.Tracks())
+
+				case "opus":
+					require.Equal(t, []format.Format{
+						&format.Opus{
+							PayloadTyp:   96,
+							ChannelCount: 2,
+						},
+					}, r.Tracks())
+
+				case "aac":
+					require.Equal(t, []format.Format{
+						&format.MPEG4Audio{
+							PayloadTyp:       96,
+							Config:           test.FormatMPEG4Audio.Config,
+							SizeLength:       13,
+							IndexLength:      3,
+							IndexDeltaLength: 3,
+						},
+					}, r.Tracks())
+
+				case "mp3":
+					require.Equal(t, []format.Format{
+						&format.MPEG1Audio{},
+					}, r.Tracks())
+
+				case "ac-3":
+					require.Equal(t, []format.Format{
+						&format.AC3{
+							PayloadTyp:   96,
+							SampleRate:   48000,
+							ChannelCount: 1,
+						},
+					}, r.Tracks())
+
+				case "pcma":
+					require.Equal(t, []format.Format{
+						&format.G711{
+							PayloadTyp:   8,
+							MULaw:        false,
+							ChannelCount: 1,
+							SampleRate:   8000,
+						},
+					}, r.Tracks())
+
+				case "pcmu":
+					require.Equal(t, []format.Format{
+						&format.G711{
+							MULaw:        true,
+							ChannelCount: 1,
+							SampleRate:   8000,
+						},
+					}, r.Tracks())
+
+				case "lpcm":
+					require.Equal(t, []format.Format{
+						&format.LPCM{
+							PayloadTyp:   96,
+							BitDepth:     16,
+							SampleRate:   44100,
+							ChannelCount: 2,
+						},
+					}, r.Tracks())
+
+				case "h265 + h264 + vp9 + av1 + opus + aac":
+					require.Equal(t, []format.Format{
+						&format.H265{
+							PayloadTyp: 96,
+							VPS:        codecprocessor.H265DefaultVPS,
+							SPS:        codecprocessor.H265DefaultSPS,
+							PPS:        codecprocessor.H265DefaultPPS,
+						},
+						&format.H264{
+							PayloadTyp:        96,
+							PacketizationMode: 1,
+							SPS:               codecprocessor.H264DefaultSPS,
+							PPS:               codecprocessor.H264DefaultPPS,
+						},
+						&format.VP9{
+							PayloadTyp: 96,
+						},
+						&format.AV1{
+							PayloadTyp: 96,
+						},
+						&format.Opus{
+							PayloadTyp:   96,
+							ChannelCount: 2,
+						},
+						&format.MPEG4Audio{
+							PayloadTyp:       96,
+							Config:           test.FormatMPEG4Audio.Config,
+							SizeLength:       13,
+							IndexLength:      3,
+							IndexDeltaLength: 3,
+						},
+					}, r.Tracks())
+				}
+
+				close(done)
+			}()
+
+			nconn, err := ln.Accept()
+			require.NoError(t, err)
+			defer nconn.Close()
+
+			conn := &gortmplib.ServerConn{
+				RW: nconn,
+			}
+			err = conn.Initialize()
+			require.NoError(t, err)
+
+			err = conn.Accept()
+			require.NoError(t, err)
+
+			r := &stream.Reader{Parent: test.NilLogger}
+
+			err = FromStream(strm.Desc, r, conn, nconn, 10*time.Second)
+			require.NoError(t, err)
+
+			strm.AddReader(r)
+			defer strm.RemoveReader(r)
+
+			switch ca {
+			case "h264 + aac":
+				strm.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
 					PTS: 0,
 					Payload: unit.PayloadH264{
 						{5, 2}, // IDR
 					},
 				})
 
-				subStream.WriteUnit(medias[1], medias[1].Formats[0], &unit.Unit{
+				strm.WriteUnit(medias[1], medias[1].Formats[0], &unit.Unit{
 					PTS: 90000 * 5,
 					Payload: unit.PayloadMPEG4Audio{
 						{3, 4},
 					},
 				})
-			},
-		},
-		{
-			name: "av1",
-			medias: []*description.Media{
-				{
-					Formats: []format.Format{&format.AV1{
-						PayloadTyp: 96,
-					}},
-				},
-			},
-			expectedTracks: []*gortmplib.Track{
-				{Codec: &codecs.AV1{}},
-			},
-			writeUnits: func(medias []*description.Media, subStream *stream.SubStream) {
+
+			case "av1":
 				for i := range 2 {
-					subStream.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
+					strm.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
 						PTS: 90000 * 2 * int64(i),
 						Payload: unit.PayloadAV1{{
 							0x0a, 0x0e, 0x00, 0x00, 0x00, 0x4a, 0xab, 0xbf,
@@ -131,53 +443,18 @@ func TestFromStream(t *testing.T) {
 						}},
 					})
 				}
-			},
-		},
-		{
-			name: "vp9",
-			medias: []*description.Media{
-				{
-					Formats: []format.Format{&format.VP9{
-						PayloadTyp: 96,
-					}},
-				},
-			},
-			expectedTracks: []*gortmplib.Track{
-				{Codec: &codecs.VP9{}},
-			},
-			writeUnits: func(medias []*description.Media, subStream *stream.SubStream) {
+
+			case "vp9":
 				for i := range 2 {
-					subStream.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
+					strm.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
 						PTS:     90000 * 2 * int64(i),
 						Payload: unit.PayloadVP9{1, 2},
 					})
 				}
-			},
-		},
-		{
-			name: "h265",
-			medias: []*description.Media{
-				{
-					Formats: []format.Format{
-						&format.H265{
-							PayloadTyp: 96,
-							VPS:        h265VPS,
-							SPS:        h265SPS,
-							PPS:        h265PPS,
-						},
-					},
-				},
-			},
-			expectedTracks: []*gortmplib.Track{
-				{Codec: &codecs.H265{
-					VPS: h265VPS,
-					SPS: h265SPS,
-					PPS: h265PPS,
-				}},
-			},
-			writeUnits: func(medias []*description.Media, subStream *stream.SubStream) {
+
+			case "h265":
 				for i := range 2 {
-					subStream.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
+					strm.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
 						PTS: 90000 * 2 * int64(i),
 						Payload: unit.PayloadH265{{
 							0x2a, 0x01, 0xad, 0xe0, 0xf5, 0x34, 0x11, 0x0b,
@@ -185,94 +462,40 @@ func TestFromStream(t *testing.T) {
 						}},
 					})
 				}
-			},
-		},
-		{
-			name: "h264",
-			medias: []*description.Media{
-				{
-					Formats: []format.Format{test.FormatH264},
-				},
-			},
-			expectedTracks: []*gortmplib.Track{
-				{Codec: &codecs.H264{
-					SPS: test.FormatH264.SPS,
-					PPS: test.FormatH264.PPS,
-				}},
-			},
-			writeUnits: func(medias []*description.Media, subStream *stream.SubStream) {
+
+			case "h264":
 				for i := range 2 {
-					subStream.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
+					strm.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
 						PTS: 90000 * 2 * int64(i),
 						Payload: unit.PayloadH264{
 							{5, 2}, // IDR
 						},
 					})
 				}
-			},
-		},
-		{
-			name: "opus",
-			medias: []*description.Media{
-				{
-					Formats: []format.Format{&format.Opus{
-						PayloadTyp:   96,
-						ChannelCount: 2,
-					}},
-				},
-			},
-			expectedTracks: []*gortmplib.Track{
-				{Codec: &codecs.Opus{
-					ChannelCount: 2,
-				}},
-			},
-			writeUnits: func(medias []*description.Media, subStream *stream.SubStream) {
+
+			case "opus":
 				for i := range 2 {
-					subStream.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
+					strm.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
 						PTS: 90000 * 5 * int64(i),
 						Payload: unit.PayloadOpus{
 							{3, 4},
 						},
 					})
 				}
-			},
-		},
-		{
-			name: "aac",
-			medias: []*description.Media{
-				{
-					Formats: []format.Format{test.FormatMPEG4Audio},
-				},
-			},
-			expectedTracks: []*gortmplib.Track{
-				{Codec: &codecs.MPEG4Audio{
-					Config: test.FormatMPEG4Audio.Config,
-				}},
-			},
-			writeUnits: func(medias []*description.Media, subStream *stream.SubStream) {
+
+			case "aac":
 				for i := range 2 {
-					subStream.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
+					strm.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
 						PTS: 90000 * 5 * int64(i),
 						Payload: unit.PayloadMPEG4Audio{
 							{3, 4},
 						},
 					})
 				}
-			},
-		},
-		{
-			name: "mp3",
-			medias: []*description.Media{
-				{
-					Formats: []format.Format{&format.MPEG1Audio{}},
-				},
-			},
-			expectedTracks: []*gortmplib.Track{
-				{Codec: &codecs.MPEG1Audio{}},
-			},
-			writeUnits: func(medias []*description.Media, subStream *stream.SubStream) {
+
+			case "mp3":
 				for i := range 2 {
-					subStream.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
+					strm.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
 						PTS: 90000 * 5 * int64(i),
 						Payload: unit.PayloadMPEG1Audio{
 							{
@@ -281,27 +504,10 @@ func TestFromStream(t *testing.T) {
 						},
 					})
 				}
-			},
-		},
-		{
-			name: "ac-3",
-			medias: []*description.Media{
-				{
-					Formats: []format.Format{&format.AC3{
-						SampleRate:   44100,
-						ChannelCount: 2,
-					}},
-				},
-			},
-			expectedTracks: []*gortmplib.Track{
-				{Codec: &codecs.AC3{
-					SampleRate:   48000,
-					ChannelCount: 1,
-				}},
-			},
-			writeUnits: func(medias []*description.Media, subStream *stream.SubStream) {
+
+			case "ac-3":
 				for i := range 2 {
-					subStream.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
+					strm.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
 						PTS: 90000 * 5 * int64(i),
 						Payload: unit.PayloadAC3{
 							{
@@ -357,145 +563,29 @@ func TestFromStream(t *testing.T) {
 						},
 					})
 				}
-			},
-		},
-		{
-			name: "pcma",
-			medias: []*description.Media{
-				{
-					Formats: []format.Format{&format.G711{
-						MULaw:        false,
-						SampleRate:   8000,
-						ChannelCount: 1,
-					}},
-				},
-			},
-			expectedTracks: []*gortmplib.Track{
-				{Codec: &codecs.G711{
-					MULaw:        false,
-					ChannelCount: 1,
-				}},
-			},
-			writeUnits: func(medias []*description.Media, subStream *stream.SubStream) {
+
+			case "pcma", "pcmu":
 				for i := range 2 {
-					subStream.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
+					strm.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
 						PTS: 90000 * 5 * int64(i),
 						Payload: unit.PayloadG711{
 							3, 4,
 						},
 					})
 				}
-			},
-		},
-		{
-			name: "pcmu",
-			medias: []*description.Media{
-				{
-					Formats: []format.Format{&format.G711{
-						MULaw:        true,
-						SampleRate:   8000,
-						ChannelCount: 1,
-					}},
-				},
-			},
-			expectedTracks: []*gortmplib.Track{
-				{Codec: &codecs.G711{
-					MULaw:        true,
-					ChannelCount: 1,
-				}},
-			},
-			writeUnits: func(medias []*description.Media, subStream *stream.SubStream) {
+
+			case "lpcm":
 				for i := range 2 {
-					subStream.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
-						PTS: 90000 * 5 * int64(i),
-						Payload: unit.PayloadG711{
-							3, 4,
-						},
-					})
-				}
-			},
-		},
-		{
-			name: "lpcm",
-			medias: []*description.Media{
-				{
-					Formats: []format.Format{&format.LPCM{
-						BitDepth:     16,
-						SampleRate:   44100,
-						ChannelCount: 2,
-					}},
-				},
-			},
-			expectedTracks: []*gortmplib.Track{
-				{Codec: &codecs.LPCM{
-					BitDepth:     16,
-					SampleRate:   44100,
-					ChannelCount: 2,
-				}},
-			},
-			writeUnits: func(medias []*description.Media, subStream *stream.SubStream) {
-				for i := range 2 {
-					subStream.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
+					strm.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
 						PTS: 90000 * 5 * int64(i),
 						Payload: unit.PayloadLPCM{
 							3, 4, 5, 6,
 						},
 					})
 				}
-			},
-		},
-		{
-			name: "h265 + h264 + vp9 + av1 + opus + aac",
-			medias: []*description.Media{
-				{
-					Formats: []format.Format{&format.H265{}},
-				},
-				{
-					Formats: []format.Format{&format.H264{}},
-				},
-				{
-					Formats: []format.Format{&format.VP9{}},
-				},
-				{
-					Formats: []format.Format{&format.AV1{}},
-				},
-				{
-					Formats: []format.Format{&format.Opus{
-						PayloadTyp:   96,
-						ChannelCount: 2,
-					}},
-				},
-				{
-					Formats: []format.Format{&format.MPEG4Audio{
-						PayloadTyp:       96,
-						Config:           test.FormatMPEG4Audio.Config,
-						SizeLength:       13,
-						IndexLength:      3,
-						IndexDeltaLength: 3,
-					}},
-				},
-			},
-			expectedTracks: []*gortmplib.Track{
-				{Codec: &codecs.H265{
-					VPS: h265DefaultVPS,
-					SPS: h265DefaultSPS,
-					PPS: h265DefaultPPS,
-				}},
-				{Codec: &codecs.H264{
-					SPS: h264DefaultSPS,
-					PPS: h264DefaultPPS,
-				}},
-				{Codec: &codecs.VP9{}},
-				{Codec: &codecs.AV1{}},
-				{Codec: &codecs.Opus{
-					ChannelCount: 2,
-				}},
-				{Codec: &codecs.MPEG4Audio{
-					Config: test.FormatMPEG4Audio.Config,
-				}},
-			},
-			writeUnits: func(medias []*description.Media, subStream *stream.SubStream) {
-				subStream.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
+
+			case "h265 + h264 + vp9 + av1 + opus + aac":
+				strm.WriteUnit(medias[0], medias[0].Formats[0], &unit.Unit{
 					Payload: unit.PayloadH265{
 						{
 							0x40, 0x01, 0x0c, 0x01, 0xff, 0xff, 0x01, 0x60,
@@ -520,110 +610,38 @@ func TestFromStream(t *testing.T) {
 					},
 				})
 
-				subStream.WriteUnit(medias[1], medias[1].Formats[0], &unit.Unit{
+				strm.WriteUnit(medias[1], medias[1].Formats[0], &unit.Unit{
 					Payload: unit.PayloadH264{
-						h264DefaultSPS,
-						h264DefaultPPS,
+						codecprocessor.H264DefaultSPS,
+						codecprocessor.H264DefaultPPS,
 						{5, 2}, // IDR
 					},
 				})
 
-				subStream.WriteUnit(medias[2], medias[2].Formats[0], &unit.Unit{
+				strm.WriteUnit(medias[2], medias[2].Formats[0], &unit.Unit{
 					Payload: unit.PayloadVP9{1, 2},
 				})
 
-				subStream.WriteUnit(medias[3], medias[3].Formats[0], &unit.Unit{
+				strm.WriteUnit(medias[3], medias[3].Formats[0], &unit.Unit{
 					Payload: unit.PayloadAV1{{
 						0x0a, 0x0e, 0x00, 0x00, 0x00, 0x4a, 0xab, 0xbf,
 						0xc3, 0x77, 0x6b, 0xe4, 0x40, 0x40, 0x40, 0x41,
 					}},
 				})
 
-				subStream.WriteUnit(medias[4], medias[4].Formats[0], &unit.Unit{
+				strm.WriteUnit(medias[4], medias[4].Formats[0], &unit.Unit{
 					Payload: unit.PayloadOpus{
 						{3, 4},
 					},
 				})
 
-				subStream.WriteUnit(medias[5], medias[5].Formats[0], &unit.Unit{
+				strm.WriteUnit(medias[5], medias[5].Formats[0], &unit.Unit{
 					PTS: 90000 * 5,
 					Payload: unit.PayloadMPEG4Audio{
 						{3, 4},
 					},
 				})
-			},
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			medias := tc.medias
-
-			strm := &stream.Stream{
-				Desc:              &description.Session{Medias: medias},
-				WriteQueueSize:    512,
-				RTPMaxPayloadSize: 1450,
-				Parent:            test.NilLogger,
 			}
-			err := strm.Initialize()
-			require.NoError(t, err)
-
-			subStream := &stream.SubStream{
-				Stream:        strm,
-				UseRTPPackets: false,
-			}
-			err = subStream.Initialize()
-			require.NoError(t, err)
-
-			ln, err := net.Listen("tcp", "127.0.0.1:9121")
-			require.NoError(t, err)
-			defer ln.Close()
-
-			done := make(chan struct{})
-
-			go func() {
-				u, err2 := url.Parse("rtmp://127.0.0.1:9121/stream")
-				require.NoError(t, err2)
-
-				c := &gortmplib.Client{
-					URL: u,
-				}
-				err2 = c.Initialize(context.Background())
-				require.NoError(t, err2)
-
-				r := &gortmplib.Reader{
-					Conn: c,
-				}
-				err2 = r.Initialize()
-				require.NoError(t, err2)
-
-				require.Equal(t, tc.expectedTracks, r.Tracks())
-
-				close(done)
-			}()
-
-			nconn, err := ln.Accept()
-			require.NoError(t, err)
-			defer nconn.Close()
-
-			conn := &gortmplib.ServerConn{
-				RW: nconn,
-			}
-			err = conn.Initialize()
-			require.NoError(t, err)
-
-			err = conn.Accept()
-			require.NoError(t, err)
-
-			r := &stream.Reader{Parent: test.NilLogger}
-
-			err = FromStream(strm.Desc, r, conn, nconn, 10*time.Second)
-			require.NoError(t, err)
-
-			strm.AddReader(r)
-			defer strm.RemoveReader(r)
-
-			tc.writeUnits(medias, subStream)
 
 			<-done
 		})

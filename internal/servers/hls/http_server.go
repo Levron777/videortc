@@ -157,10 +157,7 @@ func (s *httpServer) onRequest(ctx *gin.Context) {
 		if errors.As(err, &terr) {
 			if terr.AskCredentials {
 				ctx.Header("WWW-Authenticate", `Basic realm="mediamtx"`)
-				ctx.AbortWithStatusJSON(http.StatusUnauthorized, &defs.APIError{
-					Status: "error",
-					Error:  "authentication error",
-				})
+				ctx.Writer.WriteHeader(http.StatusUnauthorized)
 				return
 			}
 
@@ -169,10 +166,7 @@ func (s *httpServer) onRequest(ctx *gin.Context) {
 			// wait some seconds to delay brute force attacks
 			<-time.After(auth.PauseAfterError)
 
-			ctx.AbortWithStatusJSON(http.StatusUnauthorized, &defs.APIError{
-				Status: "error",
-				Error:  "authentication error",
-			})
+			ctx.Writer.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 

@@ -21,7 +21,7 @@ import (
 )
 
 func interfaceIsEmpty(i any) bool {
-	return reflect.ValueOf(i).Kind() != reflect.Pointer || reflect.ValueOf(i).IsNil()
+	return reflect.ValueOf(i).Kind() != reflect.Ptr || reflect.ValueOf(i).IsNil()
 }
 
 func sortedKeys(paths map[string]string) []string {
@@ -157,10 +157,7 @@ func (m *Metrics) middlewareAuth(ctx *gin.Context) {
 	if err != nil {
 		if err.AskCredentials {
 			ctx.Header("WWW-Authenticate", `Basic realm="mediamtx"`)
-			ctx.AbortWithStatusJSON(http.StatusUnauthorized, &defs.APIError{
-				Status: "error",
-				Error:  "authentication error",
-			})
+			ctx.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
 
@@ -169,10 +166,7 @@ func (m *Metrics) middlewareAuth(ctx *gin.Context) {
 		// wait some seconds to delay brute force attacks
 		<-time.After(auth.PauseAfterError)
 
-		ctx.AbortWithStatusJSON(http.StatusUnauthorized, &defs.APIError{
-			Status: "error",
-			Error:  "authentication error",
-		})
+		ctx.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
 }

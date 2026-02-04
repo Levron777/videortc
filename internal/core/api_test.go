@@ -15,11 +15,10 @@ import (
 	"time"
 
 	"github.com/bluenviron/gortmplib"
-	rtmpcodecs "github.com/bluenviron/gortmplib/pkg/codecs"
 	"github.com/bluenviron/gortsplib/v5"
 	"github.com/bluenviron/gortsplib/v5/pkg/description"
+	"github.com/bluenviron/gortsplib/v5/pkg/format"
 	"github.com/bluenviron/mediacommon/v2/pkg/formats/mpegts"
-	tscodecs "github.com/bluenviron/mediacommon/v2/pkg/formats/mpegts/codecs"
 	srt "github.com/datarhei/gosrt"
 	"github.com/google/uuid"
 	"github.com/pion/rtp"
@@ -70,7 +69,7 @@ func checkError(t *testing.T, msg string, body io.Reader) {
 	var resErr map[string]any
 	err := json.NewDecoder(body).Decode(&resErr)
 	require.NoError(t, err)
-	require.Equal(t, map[string]any{"status": "error", "error": msg}, resErr)
+	require.Equal(t, map[string]any{"error": msg}, resErr)
 }
 
 func TestAPIPathsList(t *testing.T) {
@@ -441,21 +440,14 @@ func TestAPIProtocolListGet(t *testing.T) {
 				require.NoError(t, err)
 				defer conn.Close()
 
-				track := &gortmplib.Track{
-					Codec: &rtmpcodecs.H264{
-						SPS: test.FormatH264.SPS,
-						PPS: test.FormatH264.PPS,
-					},
-				}
-
 				w := &gortmplib.Writer{
 					Conn:   conn,
-					Tracks: []*gortmplib.Track{track},
+					Tracks: []format.Format{test.FormatH264},
 				}
 				err = w.Initialize()
 				require.NoError(t, err)
 
-				err = w.WriteH264(track, 2*time.Second, 2*time.Second, [][]byte{{5, 2, 3, 4}})
+				err = w.WriteH264(test.FormatH264, 2*time.Second, 2*time.Second, [][]byte{{5, 2, 3, 4}})
 				require.NoError(t, err)
 
 				time.Sleep(500 * time.Millisecond)
@@ -565,7 +557,7 @@ func TestAPIProtocolListGet(t *testing.T) {
 				defer conn.Close()
 
 				track := &mpegts.Track{
-					Codec: &tscodecs.H264{},
+					Codec: &mpegts.CodecH264{},
 				}
 
 				bw := bufio.NewWriter(conn)
@@ -1045,21 +1037,14 @@ func TestAPIProtocolKick(t *testing.T) {
 				require.NoError(t, err)
 				defer conn.Close()
 
-				track := &gortmplib.Track{
-					Codec: &rtmpcodecs.H264{
-						SPS: test.FormatH264.SPS,
-						PPS: test.FormatH264.PPS,
-					},
-				}
-
 				w := &gortmplib.Writer{
 					Conn:   conn,
-					Tracks: []*gortmplib.Track{track},
+					Tracks: []format.Format{test.FormatH264},
 				}
 				err = w.Initialize()
 				require.NoError(t, err)
 
-				err = w.WriteH264(track, 2*time.Second, 2*time.Second, [][]byte{{5, 2, 3, 4}})
+				err = w.WriteH264(test.FormatH264, 2*time.Second, 2*time.Second, [][]byte{{5, 2, 3, 4}})
 				require.NoError(t, err)
 
 			case "webrtc":
@@ -1099,7 +1084,7 @@ func TestAPIProtocolKick(t *testing.T) {
 				defer conn.Close()
 
 				track := &mpegts.Track{
-					Codec: &tscodecs.H264{},
+					Codec: &mpegts.CodecH264{},
 				}
 
 				bw := bufio.NewWriter(conn)

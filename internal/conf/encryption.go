@@ -1,40 +1,59 @@
 package conf
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/bluenviron/mediamtx/internal/conf/jsonwrapper"
 )
 
 // Encryption is the rtspEncryption / rtmpEncryption parameter.
-type Encryption string
+type Encryption int
 
 // values.
 const (
-	EncryptionNo       Encryption = "no"
-	EncryptionOptional Encryption = "optional"
-	EncryptionStrict   Encryption = "strict"
+	EncryptionNo Encryption = iota
+	EncryptionOptional
+	EncryptionStrict
 )
+
+// MarshalJSON implements json.Marshaler.
+func (d Encryption) MarshalJSON() ([]byte, error) {
+	var out string
+
+	switch d {
+	case EncryptionNo:
+		out = "no"
+
+	case EncryptionOptional:
+		out = "optional"
+
+	default:
+		out = "strict"
+	}
+
+	return json.Marshal(out)
+}
 
 // UnmarshalJSON implements json.Unmarshaler.
 func (d *Encryption) UnmarshalJSON(b []byte) error {
-	type alias Encryption
-	if err := jsonwrapper.Unmarshal(b, (*alias)(d)); err != nil {
+	var in string
+	if err := jsonwrapper.Unmarshal(b, &in); err != nil {
 		return err
 	}
 
-	switch *d {
-	case "false":
+	switch in {
+	case "no", "false":
 		*d = EncryptionNo
-	case "true", "yes":
-		*d = EncryptionStrict
-	}
 
-	switch *d {
-	case EncryptionNo, EncryptionOptional, EncryptionStrict:
+	case "optional":
+		*d = EncryptionOptional
+
+	case "strict", "yes", "true":
+		*d = EncryptionStrict
 
 	default:
-		return fmt.Errorf("invalid encryption: '%s'", *d)
+		return fmt.Errorf("invalid encryption: '%s'", in)
 	}
 
 	return nil

@@ -17,7 +17,7 @@ import (
 // - core.sourceRedirect
 type Source interface {
 	logger.Writer
-	APISourceDescribe() *APIPathSource
+	APISourceDescribe() APIPathSourceOrReader
 }
 
 // FormatsToCodecs returns the name of codecs of given formats.
@@ -42,32 +42,22 @@ func FormatsInfo(formats []format.Format) string {
 		strings.Join(FormatsToCodecs(formats), ", "))
 }
 
-func gatherFormats(medias []*description.Media) []format.Format {
-	n := 0
-	for _, media := range medias {
-		n += len(media.Formats)
-	}
-
-	if n == 0 {
-		return nil
-	}
-
-	formats := make([]format.Format, n)
-	n = 0
-
-	for _, media := range medias {
-		n += copy(formats[n:], media.Formats)
-	}
-
-	return formats
-}
-
 // MediasToCodecs returns the name of codecs of given formats.
 func MediasToCodecs(medias []*description.Media) []string {
-	return FormatsToCodecs(gatherFormats(medias))
+	var formats []format.Format
+	for _, media := range medias {
+		formats = append(formats, media.Formats...)
+	}
+
+	return FormatsToCodecs(formats)
 }
 
 // MediasInfo returns a description of medias.
 func MediasInfo(medias []*description.Media) string {
-	return FormatsInfo(gatherFormats(medias))
+	var formats []format.Format
+	for _, media := range medias {
+		formats = append(formats, media.Formats...)
+	}
+
+	return FormatsInfo(formats)
 }

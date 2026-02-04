@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/bluenviron/gortmplib"
-	"github.com/bluenviron/gortmplib/pkg/codecs"
 	"github.com/bluenviron/gortsplib/v5/pkg/description"
+	"github.com/bluenviron/gortsplib/v5/pkg/format"
 	"github.com/bluenviron/mediamtx/internal/conf"
 	"github.com/bluenviron/mediamtx/internal/defs"
 	"github.com/bluenviron/mediamtx/internal/externalcmd"
@@ -61,64 +61,28 @@ func TestServerPublish(t *testing.T) {
 			}
 
 			var strm *stream.Stream
-			var reader *stream.Reader
-			defer func() {
-				strm.RemoveReader(reader)
-			}()
-			dataReceived := make(chan struct{})
-			n := 0
+			streamCreated := make(chan struct{})
 
 			pathManager := &test.PathManager{
-				AddPublisherImpl: func(req defs.PathAddPublisherReq) (defs.Path, *stream.SubStream, error) {
+				AddPublisherImpl: func(req defs.PathAddPublisherReq) (defs.Path, *stream.Stream, error) {
 					require.Equal(t, "teststream", req.AccessRequest.Name)
 					require.Equal(t, "user=myuser&pass=mypass&param=value", req.AccessRequest.Query)
 					require.Equal(t, "myuser", req.AccessRequest.Credentials.User)
 					require.Equal(t, "mypass", req.AccessRequest.Credentials.Pass)
 
 					strm = &stream.Stream{
-						Desc:              req.Desc,
-						WriteQueueSize:    512,
-						RTPMaxPayloadSize: 1450,
-						Parent:            test.NilLogger,
+						WriteQueueSize:     512,
+						RTPMaxPayloadSize:  1450,
+						Desc:               req.Desc,
+						GenerateRTPPackets: true,
+						Parent:             test.NilLogger,
 					}
 					err := strm.Initialize()
 					require.NoError(t, err)
 
-					subStream := &stream.SubStream{
-						Stream:        strm,
-						UseRTPPackets: false,
-					}
-					err = subStream.Initialize()
-					require.NoError(t, err)
+					close(streamCreated)
 
-					reader = &stream.Reader{Parent: test.NilLogger}
-
-					reader.OnData(
-						strm.Desc.Medias[0],
-						strm.Desc.Medias[0].Formats[0],
-						func(u *unit.Unit) error {
-							switch n {
-							case 0:
-								require.Equal(t, unit.PayloadH264(nil), u.Payload)
-
-							case 1:
-								require.Equal(t, unit.PayloadH264{
-									test.FormatH264.SPS,
-									test.FormatH264.PPS,
-									{5, 2, 3, 4},
-								}, u.Payload)
-								close(dataReceived)
-
-							default:
-								t.Errorf("should not happen")
-							}
-							n++
-							return nil
-						})
-
-					strm.AddReader(reader)
-
-					return &dummyPath{}, subStream, nil
+					return &dummyPath{}, strm, nil
 				},
 			}
 
@@ -164,28 +128,49 @@ func TestServerPublish(t *testing.T) {
 			defer conn.Close()
 
 			w := &gortmplib.Writer{
-				Conn: conn,
-				Tracks: []*gortmplib.Track{
-					{Codec: &codecs.H264{
-						SPS: test.FormatH264.SPS,
-						PPS: test.FormatH264.PPS,
-					}},
-					{Codec: &codecs.MPEG4Audio{
-						Config: test.FormatMPEG4Audio.Config,
-					}},
-				},
+				Conn:   conn,
+				Tracks: []format.Format{test.FormatH264, test.FormatMPEG4Audio},
 			}
 			err = w.Initialize()
 			require.NoError(t, err)
 
 			err = w.WriteH264(
-				w.Tracks[0],
+				test.FormatH264,
 				2*time.Second, 2*time.Second, [][]byte{
 					{5, 2, 3, 4},
 				})
 			require.NoError(t, err)
 
-			<-dataReceived
+			<-streamCreated
+
+			recv := make(chan struct{})
+
+			r := &stream.Reader{Parent: test.NilLogger}
+
+			r.OnData(
+				strm.Desc.Medias[0],
+				strm.Desc.Medias[0].Formats[0],
+				func(u *unit.Unit) error {
+					require.Equal(t, unit.PayloadH264{
+						test.FormatH264.SPS,
+						test.FormatH264.PPS,
+						{5, 2, 3, 4},
+					}, u.Payload)
+					close(recv)
+					return nil
+				})
+
+			strm.AddReader(r)
+			defer strm.RemoveReader(r)
+
+			err = w.WriteH264(
+				test.FormatH264,
+				3*time.Second, 3*time.Second, [][]byte{
+					{5, 2, 3, 4},
+				})
+			require.NoError(t, err)
+
+			<-recv
 		})
 	}
 }
@@ -212,19 +197,13 @@ func TestServerRead(t *testing.T) {
 			desc := &description.Session{Medias: []*description.Media{test.MediaH264}}
 
 			strm := &stream.Stream{
-				Desc:              desc,
-				WriteQueueSize:    512,
-				RTPMaxPayloadSize: 1450,
-				Parent:            test.NilLogger,
+				WriteQueueSize:     512,
+				RTPMaxPayloadSize:  1450,
+				Desc:               desc,
+				GenerateRTPPackets: true,
+				Parent:             test.NilLogger,
 			}
 			err := strm.Initialize()
-			require.NoError(t, err)
-
-			subStream := &stream.SubStream{
-				Stream:        strm,
-				UseRTPPackets: false,
-			}
-			err = subStream.Initialize()
 			require.NoError(t, err)
 
 			pathManager := &test.PathManager{
@@ -278,17 +257,17 @@ func TestServerRead(t *testing.T) {
 			require.NoError(t, err)
 			defer conn.Close()
 
-			strm.WaitForReaders()
-
 			go func() {
-				subStream.WriteUnit(desc.Medias[0], desc.Medias[0].Formats[0], &unit.Unit{
+				time.Sleep(500 * time.Millisecond)
+
+				strm.WriteUnit(desc.Medias[0], desc.Medias[0].Formats[0], &unit.Unit{
 					NTP: time.Time{},
 					Payload: unit.PayloadH264{
 						{5, 2, 3, 4}, // IDR
 					},
 				})
 
-				subStream.WriteUnit(desc.Medias[0], desc.Medias[0].Formats[0], &unit.Unit{
+				strm.WriteUnit(desc.Medias[0], desc.Medias[0].Formats[0], &unit.Unit{
 					NTP: time.Time{},
 					PTS: 2 * 90000,
 					Payload: unit.PayloadH264{
@@ -296,7 +275,7 @@ func TestServerRead(t *testing.T) {
 					},
 				})
 
-				subStream.WriteUnit(desc.Medias[0], desc.Medias[0].Formats[0], &unit.Unit{
+				strm.WriteUnit(desc.Medias[0], desc.Medias[0].Formats[0], &unit.Unit{
 					NTP: time.Time{},
 					PTS: 3 * 90000,
 					Payload: unit.PayloadH264{
@@ -312,11 +291,9 @@ func TestServerRead(t *testing.T) {
 			require.NoError(t, err)
 
 			tracks := r.Tracks()
-			require.Len(t, tracks, 1)
-			_, ok := tracks[0].Codec.(*codecs.H264)
-			require.True(t, ok)
+			require.Equal(t, []format.Format{test.FormatH264}, tracks)
 
-			r.OnDataH264(tracks[0], func(_ time.Duration, _ time.Duration, au [][]byte) {
+			r.OnDataH264(tracks[0].(*format.H264), func(_ time.Duration, _ time.Duration, au [][]byte) {
 				require.Equal(t, [][]byte{
 					test.FormatH264.SPS,
 					test.FormatH264.PPS,

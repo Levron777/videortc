@@ -67,18 +67,18 @@ func (s *Source) Run(params defs.StaticSourceRunParams) error {
 		return err
 	}
 
-	var subStream *stream.SubStream
+	var stream *stream.Stream
 
-	medias, err := webrtc.ToStream(client.PeerConnection(), params.Conf, &subStream, s)
+	medias, err := webrtc.ToStream(client.PeerConnection(), params.Conf, &stream, s)
 	if err != nil {
 		client.Close() //nolint:errcheck
 		return err
 	}
 
 	rres := s.Parent.SetReady(defs.PathSourceStaticSetReadyReq{
-		Desc:          &description.Session{Medias: medias},
-		UseRTPPackets: true,
-		ReplaceNTP:    !params.Conf.UseAbsoluteTimestamp,
+		Desc:               &description.Session{Medias: medias},
+		GenerateRTPPackets: true,
+		FillNTP:            !params.Conf.UseAbsoluteTimestamp,
 	})
 	if rres.Err != nil {
 		client.Close() //nolint:errcheck
@@ -87,7 +87,7 @@ func (s *Source) Run(params defs.StaticSourceRunParams) error {
 
 	defer s.Parent.SetNotReady(defs.PathSourceStaticSetNotReadyReq{})
 
-	subStream = rres.SubStream
+	stream = rres.Stream
 
 	client.StartReading()
 
@@ -114,8 +114,8 @@ func (s *Source) Run(params defs.StaticSourceRunParams) error {
 }
 
 // APISourceDescribe implements StaticSource.
-func (*Source) APISourceDescribe() *defs.APIPathSource {
-	return &defs.APIPathSource{
+func (*Source) APISourceDescribe() defs.APIPathSourceOrReader {
+	return defs.APIPathSourceOrReader{
 		Type: "webRTCSource",
 		ID:   "",
 	}

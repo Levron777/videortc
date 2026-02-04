@@ -78,6 +78,16 @@ func (c *conn) initialize() {
 
 	c.Log(logger.Info, "opened")
 
+	desc := defs.APIPathSourceOrReader{
+		Type: func() string {
+			if c.isTLS {
+				return "rtspsConn"
+			}
+			return "rtspConn"
+		}(),
+		ID: c.uuid.String(),
+	}
+
 	c.onDisconnectHook = hooks.OnConnect(hooks.OnConnectParams{
 		Logger:              c,
 		ExternalCmdPool:     c.externalCmdPool,
@@ -85,15 +95,7 @@ func (c *conn) initialize() {
 		RunOnConnectRestart: c.runOnConnectRestart,
 		RunOnDisconnect:     c.runOnDisconnect,
 		RTSPAddress:         c.rtspAddress,
-		Desc: defs.APIPathReader{
-			Type: func() string {
-				if c.isTLS {
-					return "rtspsConn"
-				}
-				return "rtspConn"
-			}(),
-			ID: c.uuid.String(),
-		},
+		Desc:                desc,
 	})
 }
 
@@ -191,16 +193,16 @@ func (c *conn) onDescribe(ctx *gortsplib.ServerHandlerOnDescribeCtx,
 		}, nil, nil
 	}
 
-	var strm *gortsplib.ServerStream
+	var stream *gortsplib.ServerStream
 	if !c.isTLS {
-		strm = res.Stream.RTSPStream(c.rserver)
+		stream = res.Stream.RTSPStream(c.rserver)
 	} else {
-		strm = res.Stream.RTSPSStream(c.rserver)
+		stream = res.Stream.RTSPSStream(c.rserver)
 	}
 
 	return &base.Response{
 		StatusCode: base.StatusOK,
-	}, strm, nil
+	}, stream, nil
 }
 
 func (c *conn) handleAuthError(err *auth.Error) (*base.Response, error) {

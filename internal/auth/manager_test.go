@@ -16,15 +16,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func mustParseCIDR(v string) conf.IPNetwork {
+func mustParseCIDR(v string) net.IPNet {
 	_, ne, err := net.ParseCIDR(v)
 	if err != nil {
 		panic(err)
 	}
 	if ipv4 := ne.IP.To4(); ipv4 != nil {
-		return conf.IPNetwork{IP: ipv4, Mask: ne.Mask[len(ne.Mask)-4 : len(ne.Mask)]}
+		return net.IPNet{IP: ipv4, Mask: ne.Mask[len(ne.Mask)-4 : len(ne.Mask)]}
 	}
-	return conf.IPNetwork(*ne)
+	return *ne
 }
 
 func TestAuthInternal(t *testing.T) {

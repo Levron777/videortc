@@ -1,90 +1,98 @@
 # Compile from source
 
-## Standard procedure
+## Standard method
 
-1. Install git and Go &ge; 1.25.
+Install git and Go &ge; 1.25. Clone the repository, enter into the folder and start the building process:
 
-2. Clone the repository, enter into the folder and start the building process:
+```sh
+git clone https://github.com/bluenviron/mediamtx
+cd mediamtx
+go generate ./...
+CGO_ENABLED=0 go build .
+```
 
-   ```sh
-   git clone https://github.com/bluenviron/mediamtx
-   cd mediamtx
-   go generate ./...
-   CGO_ENABLED=0 go build .
-   ```
+The command will produce the `mediamtx` binary.
 
-   This will produce the `mediamtx` binary.
+## OpenWrt
+
+The compilation procedure is the same as the standard one. On the OpenWrt device, install git and Go:
+
+```sh
+opkg update
+opkg install golang git git-http
+```
+
+Clone the repository, enter into the folder and start the building process:
+
+```sh
+git clone https://github.com/bluenviron/mediamtx
+cd mediamtx
+go generate ./...
+CGO_ENABLED=0 go build .
+```
+
+The command will produce the `mediamtx` binary.
+
+If the OpenWrt device doesn't have enough resources to compile, you can [cross compile](#cross-compile) from another machine.
 
 ## Custom libcamera
 
-If you need to use a custom or external libcamera to interact with some Raspberry Pi Camera model that requires it, additional steps are required:
+If you need to use a custom or external libcamera when interacting with the Raspberry Pi Camera, some additional steps are needed:
 
 1. Download [mediamtx-rpicamera source code](https://github.com/bluenviron/mediamtx-rpicamera) and compile it against the external libcamera. Instructions are in the repository.
 
-2. Install git and Go &ge; 1.25.
-
-3. Clone the _MediaMTX_ repository:
-
-   ```sh
-   git clone https://github.com/bluenviron/mediamtx
-   ```
-
-4. Inside the _MediaMTX_ folder, run:
+2. Download [MediaMTX source code](https://github.com/bluenviron/mediamtx) and run:
 
    ```sh
    go generate ./...
    ```
 
-5. Copy `build/mtxrpicam_32` and/or `build/mtxrpicam_64` (depending on the architecture) from `mediamtx-rpicamera` to `mediamtx`, inside folder `internal/staticsources/rpicamera/`, overriding existing folders.
+3. Copy `build/mtxrpicam_32` and/or `build/mtxrpicam_64` (depending on the architecture) from `mediamtx-rpicamera` to `mediamtx`, inside folder `internal/staticsources/rpicamera/`, overriding existing folders.
 
-6. Compile:
+4. Compile:
 
    ```sh
    go run .
    ```
 
-   This will produce the `mediamtx` binary.
-
 ## Cross compile
 
 Cross compilation allows to build an executable for a target machine from another machine with different operating system or architecture. This is useful in case the target machine doesn't have enough resources for compilation or if you don't want to install the compilation dependencies on it.
 
-1. On the machine you want to use to compile, install git and Go &ge; 1.25.
+On the machine you want to use to compile, install git and Go &ge; 1.25. Clone the repository, enter into the folder and start the building process:
 
-2. Clone the repository, enter into the folder and start the building process:
+```sh
+git clone https://github.com/bluenviron/mediamtx
+cd mediamtx
+go generate ./...
+CGO_ENABLED=0 GOOS=my_os GOARCH=my_arch go build .
+```
 
-   ```sh
-   git clone https://github.com/bluenviron/mediamtx
-   cd mediamtx
-   go generate ./...
-   CGO_ENABLED=0 GOOS=my_os GOARCH=my_arch go build .
-   ```
+Replace `my_os` and `my_arch` with the operating system and architecture of your target machine. A list of all supported combinations can be obtained with:
 
-   Replace `my_os` and `my_arch` with the operating system and architecture of your target machine. A list of all supported combinations can be obtained with:
+```sh
+go tool dist list
+```
 
-   ```sh
-   go tool dist list
-   ```
+For instance:
 
-   For instance:
+```sh
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build .
+```
 
-   ```sh
-   CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build .
-   ```
+In case of the `arm` architecture, there's an additional flag available, `GOARM`, that allows to set the ARM version:
 
-   In case of the `arm` architecture, there's an additional flag available, `GOARM`, that allows to set the ARM version:
+```sh
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 GOARM=7 go build .
+```
 
-   ```sh
-   CGO_ENABLED=0 GOOS=linux GOARCH=arm64 GOARM=7 go build .
-   ```
+In case of the `mips` architecture, there's an additional flag available, `GOMIPS`, that allows to set additional parameters:
 
-   In case of the `mips` architecture, there's an additional flag available, `GOMIPS`, that allows to set additional parameters:
+```sh
+CGO_ENABLED=0 GOOS=linux GOARCH=mips GOMIPS=softfloat go build .
+```
 
-   ```sh
-   CGO_ENABLED=0 GOOS=linux GOARCH=mips GOMIPS=softfloat go build .
-   ```
-
-   The command will produce the `mediamtx` binary.
+The command will produce the `mediamtx` binary.
 
 ## Compile for all supported platforms
 
@@ -111,7 +119,5 @@ The official Docker image can be recompiled by following these steps:
    ```
    docker build . -f docker/standard.Dockerfile -t my-mediamtx
    ```
-
-   This will produce the `my-mediamtx` image.
 
    A Dockerfile is available for each image variant (`standard.Dockerfile`, `ffmpeg.Dockerfile`, `rpi.Dockerfile`, `ffmpeg-rpi.Dockerfile`).

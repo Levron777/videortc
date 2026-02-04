@@ -197,11 +197,7 @@ func TestServerOptionsICEServer(t *testing.T) {
 
 func TestServerPublish(t *testing.T) {
 	var strm *stream.Stream
-	var reader *stream.Reader
-	defer func() {
-		strm.RemoveReader(reader)
-	}()
-	dataReceived := make(chan struct{})
+	streamCreated := make(chan struct{})
 
 	pathManager := &test.PathManager{
 		FindPathConfImpl: func(req defs.PathFindPathConfReq) (*conf.Path, error) {
@@ -211,48 +207,24 @@ func TestServerPublish(t *testing.T) {
 			require.Equal(t, "mypass", req.AccessRequest.Credentials.Pass)
 			return &conf.Path{}, nil
 		},
-		AddPublisherImpl: func(req defs.PathAddPublisherReq) (defs.Path, *stream.SubStream, error) {
+		AddPublisherImpl: func(req defs.PathAddPublisherReq) (defs.Path, *stream.Stream, error) {
 			require.Equal(t, "teststream", req.AccessRequest.Name)
 			require.Equal(t, "param=value", req.AccessRequest.Query)
 			require.True(t, req.AccessRequest.SkipAuth)
 
 			strm = &stream.Stream{
-				Desc:              req.Desc,
-				WriteQueueSize:    512,
-				RTPMaxPayloadSize: 1450,
-				Parent:            test.NilLogger,
+				WriteQueueSize:     512,
+				RTPMaxPayloadSize:  1450,
+				Desc:               req.Desc,
+				GenerateRTPPackets: true,
+				Parent:             test.NilLogger,
 			}
 			err := strm.Initialize()
 			require.NoError(t, err)
 
-			subStream := &stream.SubStream{
-				Stream:        strm,
-				UseRTPPackets: true,
-			}
-			err = subStream.Initialize()
-			require.NoError(t, err)
+			close(streamCreated)
 
-			reader = &stream.Reader{Parent: test.NilLogger}
-
-			reader.OnData(
-				strm.Desc.Medias[0],
-				strm.Desc.Medias[0].Formats[0],
-				func(u *unit.Unit) error {
-					/* select {
-					case <-recv:
-						return nil
-					default:
-					} */
-					require.Equal(t, unit.PayloadH264{
-						{1},
-					}, u.Payload)
-					close(dataReceived)
-					return nil
-				})
-
-			strm.AddReader(reader)
-
-			return &dummyPath{}, subStream, nil
+			return &dummyPath{}, strm, nil
 		},
 	}
 
@@ -317,7 +289,47 @@ func TestServerPublish(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	<-dataReceived
+	<-streamCreated
+
+	r := &stream.Reader{Parent: test.NilLogger}
+
+	recv := make(chan struct{})
+
+	r.OnData(
+		strm.Desc.Medias[0],
+		strm.Desc.Medias[0].Formats[0],
+		func(u *unit.Unit) error {
+			select {
+			case <-recv:
+				return nil
+			default:
+			}
+
+			require.Equal(t, unit.PayloadH264{
+				{1},
+			}, u.Payload)
+			close(recv)
+
+			return nil
+		})
+
+	strm.AddReader(r)
+	defer strm.RemoveReader(r)
+
+	err = track.WriteRTP(&rtp.Packet{
+		Header: rtp.Header{
+			Version:        2,
+			Marker:         true,
+			PayloadType:    96,
+			SequenceNumber: 124,
+			Timestamp:      45343,
+			SSRC:           563423,
+		},
+		Payload: []byte{1},
+	})
+	require.NoError(t, err)
+
+	<-recv
 }
 
 func TestServerRead(t *testing.T) {
@@ -472,19 +484,13 @@ func TestServerRead(t *testing.T) {
 			desc := &description.Session{Medias: ca.medias}
 
 			strm := &stream.Stream{
-				Desc:              desc,
-				WriteQueueSize:    512,
-				RTPMaxPayloadSize: 1450,
-				Parent:            test.NilLogger,
+				WriteQueueSize:     512,
+				RTPMaxPayloadSize:  1450,
+				Desc:               desc,
+				GenerateRTPPackets: ca.unit.Payload != nil,
+				Parent:             test.NilLogger,
 			}
 			err := strm.Initialize()
-			require.NoError(t, err)
-
-			subStream := &stream.SubStream{
-				Stream:        strm,
-				UseRTPPackets: (ca.unit.Payload == nil),
-			}
-			err = subStream.Initialize()
 			require.NoError(t, err)
 
 			pathManager := &test.PathManager{
@@ -549,13 +555,9 @@ func TestServerRead(t *testing.T) {
 
 				if ca.unit.Payload == nil {
 					clone := *ca.unit.RTPPackets[0]
-					subStream.WriteUnit(desc.Medias[0], desc.Medias[0].Formats[0], &unit.Unit{
-						PTS:        0,
-						NTP:        time.Time{},
-						RTPPackets: []*rtp.Packet{&clone},
-					})
+					strm.WriteRTPPacket(desc.Medias[0], desc.Medias[0].Formats[0], &clone, time.Time{}, 0)
 				} else {
-					subStream.WriteUnit(desc.Medias[0], desc.Medias[0].Formats[0], r.Interface().(*unit.Unit))
+					strm.WriteUnit(desc.Medias[0], desc.Medias[0].Formats[0], r.Interface().(*unit.Unit))
 				}
 			}()
 

@@ -233,20 +233,20 @@ func (s *session) runPublish() (int, error) {
 		return 0, err
 	}
 
-	var subStream *stream.SubStream
+	var stream *stream.Stream
 
-	medias, err := webrtc.ToStream(pc, pathConf, &subStream, s)
+	medias, err := webrtc.ToStream(pc, pathConf, &stream, s)
 	if err != nil {
 		return 0, err
 	}
 
 	var path defs.Path
-	path, subStream, err = s.pathManager.AddPublisher(defs.PathAddPublisherReq{
-		Author:        s,
-		Desc:          &description.Session{Medias: medias},
-		UseRTPPackets: true,
-		ReplaceNTP:    !pathConf.UseAbsoluteTimestamp,
-		ConfToCompare: pathConf,
+	path, stream, err = s.pathManager.AddPublisher(defs.PathAddPublisherReq{
+		Author:             s,
+		Desc:               &description.Session{Medias: medias},
+		GenerateRTPPackets: false,
+		FillNTP:            !pathConf.UseAbsoluteTimestamp,
+		ConfToCompare:      pathConf,
 		AccessRequest: defs.PathAccessRequest{
 			Name:     s.req.pathName,
 			Query:    s.req.httpRequest.URL.RawQuery,
@@ -373,7 +373,7 @@ func (s *session) runRead() (int, error) {
 		ExternalCmdPool: s.externalCmdPool,
 		Conf:            path.SafeConf(),
 		ExternalCmdEnv:  path.ExternalCmdEnv(),
-		Reader:          *s.APIReaderDescribe(),
+		Reader:          s.APIReaderDescribe(),
 		Query:           s.req.httpRequest.URL.RawQuery,
 	})
 	defer onUnreadHook()
@@ -443,19 +443,16 @@ func (s *session) addCandidates(
 }
 
 // APIReaderDescribe implements reader.
-func (s *session) APIReaderDescribe() *defs.APIPathReader {
-	return &defs.APIPathReader{
+func (s *session) APIReaderDescribe() defs.APIPathSourceOrReader {
+	return defs.APIPathSourceOrReader{
 		Type: "webRTCSession",
 		ID:   s.uuid.String(),
 	}
 }
 
 // APISourceDescribe implements source.
-func (s *session) APISourceDescribe() *defs.APIPathSource {
-	return &defs.APIPathSource{
-		Type: "webRTCSession",
-		ID:   s.uuid.String(),
-	}
+func (s *session) APISourceDescribe() defs.APIPathSourceOrReader {
+	return s.APIReaderDescribe()
 }
 
 func (s *session) apiItem() *defs.APIWebRTCSession {

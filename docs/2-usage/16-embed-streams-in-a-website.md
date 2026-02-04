@@ -20,7 +20,7 @@ The iframe can be controlled by adding query parameters to the URL (example: `ht
 
 The iframe method is fit for most use cases, but it has some limitations:
 
-- it doesn't allow to pass credentials (username, password or token) from the website to _MediaMTX_; credentials are asked directly to users.
+- it doesn't allow to pass credentials (username, password or token) from the website to MediaMTX; credentials are asked directly to users.
 - it doesn't allow to directly access the video tag, to extract data from it, or to perform dynamic actions.
 
 In order to overcome these limitations, it is possible to load the stream directly inside a `<video>` tag in the web page, through a JavaScript library.
@@ -63,12 +63,6 @@ After the video tag, add a script that initializes the stream when the page is f
       onTrack: (evt) => {
         document.getElementById("myvideo").srcObject = evt.streams[0];
       },
-      onDataChannel: (evt) => {
-        evt.channel.binaryType = "arraybuffer";
-        evt.channel.onmessage = (evt) => {
-          console.log("data channel message", evt.data);
-        };
-      },
     });
   });
 
@@ -100,7 +94,7 @@ The iframe can be controlled by adding query parameters to the URL (example: `ht
 
 The iframe method is fit for most use cases, but it has some limitations:
 
-- it doesn't allow to pass credentials (username, password or token) from the website to _MediaMTX_; credentials are asked directly to users.
+- it doesn't allow to pass credentials (username, password or token) from the website to MediaMTX; credentials are asked directly to users.
 - it doesn't allow to directly access the video tag, to extract data from it, or to perform dynamic actions.
 
 In order to overcome these limitations, it is possible to load the stream directly inside a `<video>` tag in the web page, through the _hls.js_ library.

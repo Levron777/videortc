@@ -842,7 +842,7 @@ func TestPathFallback(t *testing.T) {
 }
 
 func TestPathResolveSource(t *testing.T) {
-	var strm *gortsplib.ServerStream
+	var stream *gortsplib.ServerStream
 
 	s := gortsplib.Server{
 		Handler: &testServer{
@@ -852,12 +852,12 @@ func TestPathResolveSource(t *testing.T) {
 				require.Equal(t, "/a", ctx.Path)
 				return &base.Response{
 					StatusCode: base.StatusOK,
-				}, strm, nil
+				}, stream, nil
 			},
 			onSetup: func(_ *gortsplib.ServerHandlerOnSetupCtx) (*base.Response, *gortsplib.ServerStream, error) {
 				return &base.Response{
 					StatusCode: base.StatusOK,
-				}, strm, nil
+				}, stream, nil
 			},
 			onPlay: func(_ *gortsplib.ServerHandlerOnPlayCtx) (*base.Response, error) {
 				return &base.Response{
@@ -872,13 +872,13 @@ func TestPathResolveSource(t *testing.T) {
 	require.NoError(t, err)
 	defer s.Close()
 
-	strm = &gortsplib.ServerStream{
+	stream = &gortsplib.ServerStream{
 		Server: &s,
 		Desc:   &description.Session{Medias: []*description.Media{test.MediaH264}},
 	}
-	err = strm.Initialize()
+	err = stream.Initialize()
 	require.NoError(t, err)
-	defer strm.Close()
+	defer stream.Close()
 
 	p, ok := newInstance(
 		"paths:\n" +

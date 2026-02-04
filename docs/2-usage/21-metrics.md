@@ -1,6 +1,6 @@
 # Extract metrics
 
-_MediaMTX_ provides several metrics through a dedicated HTTP server, in a format compatible with [Prometheus](https://prometheus.io/).
+MediaMTX provides several metrics through a dedicated HTTP server, in a format compatible with [Prometheus](https://prometheus.io/).
 
 This server can be enabled by setting `metrics: yes` in the configuration.
 
@@ -134,8 +134,6 @@ webrtc_sessions_rtp_packets_jitter{id="[id]",path="[path]",remoteAddr="[remoteAd
 webrtc_sessions_rtcp_packets_received{id="[id]",path="[path]",remoteAddr="[remoteAddr]",state="[state]"} 123
 webrtc_sessions_rtcp_packets_sent{id="[id]",path="[path]",remoteAddr="[remoteAddr]",state="[state]"} 123
 ```
-
-Bitrates are not provided directly as metrics because they can be computed from received and sent bytes by any metrics analyzer (i.e. Grafana).
 
 Metrics can be filtered by using HTTP query parameters:
 

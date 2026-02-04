@@ -7,8 +7,8 @@
   <br>
 
   [![Website](https://img.shields.io/badge/website-mediamtx.org-1c94b5)](https://mediamtx.org)
-  [![Test](https://github.com/bluenviron/mediamtx/actions/workflows/code_test.yml/badge.svg?branch=main)](https://github.com/bluenviron/mediamtx/actions/workflows/code_test.yml?query=branch%3Amain)
-  [![Lint](https://github.com/bluenviron/mediamtx/actions/workflows/code_lint.yml/badge.svg?branch=main)](https://github.com/bluenviron/mediamtx/actions/workflows/code_lint.yml?query=branch%3Amain)
+  [![Test](https://github.com/bluenviron/mediamtx/actions/workflows/code_test.yml/badge.svg)](https://github.com/bluenviron/mediamtx/actions/workflows/code_test.yml)
+  [![Lint](https://github.com/bluenviron/mediamtx/actions/workflows/code_lint.yml/badge.svg)](https://github.com/bluenviron/mediamtx/actions/workflows/code_lint.yml)
   [![CodeCov](https://codecov.io/gh/bluenviron/mediamtx/branch/main/graph/badge.svg)](https://app.codecov.io/gh/bluenviron/mediamtx/tree/main)
   [![Release](https://img.shields.io/github/v/release/bluenviron/mediamtx)](https://github.com/bluenviron/mediamtx/releases)
   [![Docker Hub](https://img.shields.io/badge/docker-bluenviron/mediamtx-blue)](https://hub.docker.com/r/bluenviron/mediamtx)
@@ -32,7 +32,6 @@ _MediaMTX_ is a ready-to-use and zero-dependency real-time media server and medi
 - Streams are automatically converted from a protocol to another
 - Serve several streams at once in separate paths
 - Reload the configuration without disconnecting existing clients (hot reloading)
-- [Serve always-available streams](https://mediamtx.org/docs/usage/always-available) even when the publisher is offline
 - [Record](https://mediamtx.org/docs/usage/record) streams to disk in fMP4 or MPEG-TS format
 - [Playback](https://mediamtx.org/docs/usage/playback) recorded streams
 - [Authenticate](https://mediamtx.org/docs/usage/authentication) users with internal, HTTP or JWT authentication

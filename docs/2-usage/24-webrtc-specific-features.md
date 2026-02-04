@@ -8,7 +8,7 @@ The server can ingest and broadcast with WebRTC a wide variety of video and audi
 
 In particular, reading and publishing H265 tracks with WebRTC was not possible until some time ago due to lack of browser support. The situation improved recently and can be described as following:
 
-- Safari on iOS and macOS fully support publishing and reading H265 tracks
+- Safari on iOS and macOS fully supports publishing and reading H265 tracks
 - Chrome on Windows supports publishing and reading H265 tracks when a GPU is present and when the browser is launched with the following flags:
 
   ```
@@ -82,7 +82,7 @@ webrtcICEServers2:
     password: secret
 ```
 
-where secret is the secret of the TURN server. _MediaMTX_ will generate a set of credentials by using the secret, and credentials will be sent to clients before the WebRTC/ICE connection is established.
+where secret is the secret of the TURN server. MediaMTX will generate a set of credentials by using the secret, and credentials will be sent to clients before the WebRTC/ICE connection is established.
 
 In some cases you may want the browser to connect using TURN servers but have mediamtx not using TURN (for example if the TURN server is on the same network as mediamtx). To allow this you can configure the TURN server to be client only:
 

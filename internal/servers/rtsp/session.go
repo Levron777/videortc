@@ -18,7 +18,6 @@ import (
 	"github.com/bluenviron/mediamtx/internal/conf"
 	"github.com/bluenviron/mediamtx/internal/counterdumper"
 	"github.com/bluenviron/mediamtx/internal/defs"
-	"github.com/bluenviron/mediamtx/internal/errordumper"
 	"github.com/bluenviron/mediamtx/internal/externalcmd"
 	"github.com/bluenviron/mediamtx/internal/hooks"
 	"github.com/bluenviron/mediamtx/internal/logger"
@@ -51,18 +50,17 @@ type session struct {
 	pathConf        *conf.Path // record only
 	path            defs.Path
 	stream          *stream.Stream
-	subStream       *stream.SubStream
 	onUnreadHook    func()
-	packetsLost     *counterdumper.Dumper
-	decodeErrors    *errordumper.Dumper
-	discardedFrames *counterdumper.Dumper
+	packetsLost     *counterdumper.CounterDumper
+	decodeErrors    *counterdumper.CounterDumper
+	discardedFrames *counterdumper.CounterDumper
 }
 
 func (s *session) initialize() {
 	s.uuid = uuid.New()
 	s.created = time.Now()
 
-	s.packetsLost = &counterdumper.Dumper{
+	s.packetsLost = &counterdumper.CounterDumper{
 		OnReport: func(val uint64) {
 			s.Log(logger.Warn, "%d RTP %s lost",
 				val,
@@ -76,18 +74,21 @@ func (s *session) initialize() {
 	}
 	s.packetsLost.Start()
 
-	s.decodeErrors = &errordumper.Dumper{
-		OnReport: func(val uint64, last error) {
-			if val == 1 {
-				s.Log(logger.Warn, "decode error: %v", last)
-			} else {
-				s.Log(logger.Warn, "%d decode errors, last was: %v", val, last)
-			}
+	s.decodeErrors = &counterdumper.CounterDumper{
+		OnReport: func(val uint64) {
+			s.Log(logger.Warn, "%d decode %s",
+				val,
+				func() string {
+					if val == 1 {
+						return "error"
+					}
+					return "errors"
+				}())
 		},
 	}
 	s.decodeErrors.Start()
 
-	s.discardedFrames = &counterdumper.Dumper{
+	s.discardedFrames = &counterdumper.CounterDumper{
 		OnReport: func(val uint64) {
 			s.Log(logger.Warn, "reader is too slow, discarding %d %s",
 				val,
@@ -137,7 +138,6 @@ func (s *session) onClose(err error) {
 
 	s.path = nil
 	s.stream = nil
-	s.subStream = nil
 
 	s.discardedFrames.Stop()
 	s.decodeErrors.Stop()
@@ -194,13 +194,6 @@ func (s *session) onAnnounce(c *conn, ctx *gortsplib.ServerHandlerOnAnnounceCtx)
 	}, nil
 }
 
-func (s *session) rtspStream() *gortsplib.ServerStream {
-	if !s.isTLS {
-		return s.stream.RTSPStream(s.rserver)
-	}
-	return s.stream.RTSPSStream(s.rserver)
-}
-
 // onSetup is called by rtspServer.
 func (s *session) onSetup(c *conn, ctx *gortsplib.ServerHandlerOnSetupCtx,
 ) (*base.Response, *gortsplib.ServerStream, error) {
@@ -233,7 +226,7 @@ func (s *session) onSetup(c *conn, ctx *gortsplib.ServerHandlerOnSetupCtx,
 	}
 
 	switch s.rsession.State() {
-	case gortsplib.ServerSessionStateInitial: // play
+	case gortsplib.ServerSessionStateInitial, gortsplib.ServerSessionStatePrePlay: // play
 		path, stream, err := s.pathManager.AddReader(defs.PathAddReaderReq{
 			Author: s,
 			AccessRequest: defs.PathAccessRequest{
@@ -268,14 +261,16 @@ func (s *session) onSetup(c *conn, ctx *gortsplib.ServerHandlerOnSetupCtx,
 		s.path = path
 		s.stream = stream
 
-		return &base.Response{
-			StatusCode: base.StatusOK,
-		}, s.rtspStream(), nil
+		var rstream *gortsplib.ServerStream
+		if !s.isTLS {
+			rstream = stream.RTSPStream(s.rserver)
+		} else {
+			rstream = stream.RTSPSStream(s.rserver)
+		}
 
-	case gortsplib.ServerSessionStatePrePlay: // play, subsequent calls
 		return &base.Response{
 			StatusCode: base.StatusOK,
-		}, s.rtspStream(), nil
+		}, rstream, nil
 
 	default: // record
 		return &base.Response{
@@ -299,7 +294,7 @@ func (s *session) onPlay(_ *gortsplib.ServerHandlerOnPlayCtx) (*base.Response, e
 			ExternalCmdPool: s.externalCmdPool,
 			Conf:            s.path.SafeConf(),
 			ExternalCmdEnv:  s.path.ExternalCmdEnv(),
-			Reader:          *s.APIReaderDescribe(),
+			Reader:          s.APIReaderDescribe(),
 			Query:           s.rsession.Query(),
 		})
 	}
@@ -312,12 +307,12 @@ func (s *session) onPlay(_ *gortsplib.ServerHandlerOnPlayCtx) (*base.Response, e
 
 // onRecord is called by rtspServer.
 func (s *session) onRecord(_ *gortsplib.ServerHandlerOnRecordCtx) (*base.Response, error) {
-	path, subStream, err := s.pathManager.AddPublisher(defs.PathAddPublisherReq{
-		Author:        s,
-		Desc:          s.rsession.AnnouncedDescription(),
-		UseRTPPackets: true,
-		ReplaceNTP:    !s.pathConf.UseAbsoluteTimestamp,
-		ConfToCompare: s.pathConf,
+	path, stream, err := s.pathManager.AddPublisher(defs.PathAddPublisherReq{
+		Author:             s,
+		Desc:               s.rsession.AnnouncedDescription(),
+		GenerateRTPPackets: false,
+		FillNTP:            !s.pathConf.UseAbsoluteTimestamp,
+		ConfToCompare:      s.pathConf,
 		AccessRequest: defs.PathAccessRequest{
 			Name:     s.rsession.Path()[1:],
 			Query:    s.rsession.Query(),
@@ -331,15 +326,15 @@ func (s *session) onRecord(_ *gortsplib.ServerHandlerOnRecordCtx) (*base.Respons
 		}, err
 	}
 
+	s.path = path
+	s.stream = stream
+
 	rtsp.ToStream(
 		s.rsession,
 		s.rsession.AnnouncedDescription().Medias,
-		path.SafeConf(),
-		&s.subStream,
+		s.path.SafeConf(),
+		stream,
 		s)
-
-	s.path = path
-	s.subStream = subStream
 
 	return &base.Response{
 		StatusCode: base.StatusOK,
@@ -362,8 +357,8 @@ func (s *session) onPause(_ *gortsplib.ServerHandlerOnPauseCtx) (*base.Response,
 }
 
 // APIReaderDescribe implements reader.
-func (s *session) APIReaderDescribe() *defs.APIPathReader {
-	return &defs.APIPathReader{
+func (s *session) APIReaderDescribe() defs.APIPathSourceOrReader {
+	return defs.APIPathSourceOrReader{
 		Type: func() string {
 			if s.isTLS {
 				return "rtspsSession"
@@ -375,16 +370,8 @@ func (s *session) APIReaderDescribe() *defs.APIPathReader {
 }
 
 // APISourceDescribe implements source.
-func (s *session) APISourceDescribe() *defs.APIPathSource {
-	return &defs.APIPathSource{
-		Type: func() string {
-			if s.isTLS {
-				return "rtspsSession"
-			}
-			return "rtspSession"
-		}(),
-		ID: s.uuid.String(),
-	}
+func (s *session) APISourceDescribe() defs.APIPathSourceOrReader {
+	return s.APIReaderDescribe()
 }
 
 // onPacketLost is called by rtspServer.
@@ -393,8 +380,8 @@ func (s *session) onPacketsLost(ctx *gortsplib.ServerHandlerOnPacketsLostCtx) {
 }
 
 // onDecodeError is called by rtspServer.
-func (s *session) onDecodeError(ctx *gortsplib.ServerHandlerOnDecodeErrorCtx) {
-	s.decodeErrors.Add(ctx.Error)
+func (s *session) onDecodeError(_ *gortsplib.ServerHandlerOnDecodeErrorCtx) {
+	s.decodeErrors.Increase()
 }
 
 // onStreamWriteError is called by rtspServer.

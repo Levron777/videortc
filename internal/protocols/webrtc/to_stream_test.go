@@ -405,8 +405,8 @@ func TestToStream(t *testing.T) {
 			err = pc2.GatherIncomingTracks()
 			require.NoError(t, err)
 
-			var subStream *stream.SubStream
-			medias, err := ToStream(pc2, &conf.Path{}, &subStream, nil)
+			var stream *stream.Stream
+			medias, err := ToStream(pc2, &conf.Path{}, &stream, nil)
 			require.NoError(t, err)
 			require.Equal(t, ca.out, medias[0].Formats[0])
 		})

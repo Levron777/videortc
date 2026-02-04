@@ -94,15 +94,12 @@ func (w *muxerMP4) flush() error {
 		return recordstore.ErrNoSegmentsFound
 	}
 
-	var tracks []*pmp4.Track
-	for _, track := range w.tracks {
-		if len(track.Samples) != 0 {
-			tracks = append(tracks, &track.Track)
-		}
+	h := pmp4.Presentation{
+		Tracks: make([]*pmp4.Track, len(w.tracks)),
 	}
 
-	h := pmp4.Presentation{
-		Tracks: tracks,
+	for i, track := range w.tracks {
+		h.Tracks[i] = &track.Track
 	}
 
 	return h.Marshal(w.w)

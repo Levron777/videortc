@@ -9,10 +9,6 @@ import (
 	"github.com/bluenviron/mediamtx/internal/stream"
 )
 
-const (
-	ntpDriftTolerance = 5 * time.Second
-)
-
 // OnSegmentCreateFunc is the prototype of the function passed as OnSegmentCreate
 type OnSegmentCreateFunc = func(path string)
 

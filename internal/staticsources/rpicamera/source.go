@@ -93,8 +93,8 @@ func (r *secondaryReader) Close() {
 }
 
 // APIReaderDescribe implements reader.
-func (*secondaryReader) APIReaderDescribe() *defs.APIPathReader {
-	return &defs.APIPathReader{
+func (*secondaryReader) APIReaderDescribe() defs.APIPathSourceOrReader {
+	return defs.APIPathSourceOrReader{
 		Type: "rpiCameraSecondary",
 		ID:   "",
 	}
@@ -153,20 +153,19 @@ func (s *Source) runPrimary(params defs.StaticSourceRunParams) error {
 		medias = append(medias, mediaSecondary)
 	}
 
-	var subStream *stream.SubStream
+	var strm *stream.Stream
 
 	initializeStream := func() {
-		if subStream == nil {
+		if strm == nil {
 			res := s.Parent.SetReady(defs.PathSourceStaticSetReadyReq{
-				Desc:          &description.Session{Medias: medias},
-				UseRTPPackets: true,
-				ReplaceNTP:    false,
+				Desc:               &description.Session{Medias: medias},
+				GenerateRTPPackets: false,
 			})
 			if res.Err != nil {
 				panic("should not happen")
 			}
 
-			subStream = res.SubStream
+			strm = res.Stream
 		}
 	}
 
@@ -190,11 +189,7 @@ func (s *Source) runPrimary(params defs.StaticSourceRunParams) error {
 
 		for _, pkt := range pkts {
 			pkt.Timestamp = uint32(pts)
-			subStream.WriteUnit(medi, medi.Formats[0], &unit.Unit{
-				PTS:        pts,
-				NTP:        ntp,
-				RTPPackets: []*rtp.Packet{pkt},
-			})
+			strm.WriteRTPPacket(medi, medi.Formats[0], pkt, ntp, pts)
 		}
 	}
 
@@ -221,17 +216,13 @@ func (s *Source) runPrimary(params defs.StaticSourceRunParams) error {
 			for _, pkt := range pkts {
 				pkt.Timestamp = uint32(pts)
 				pkt.PayloadType = 96
-				subStream.WriteUnit(mediaSecondary, mediaSecondary.Formats[0], &unit.Unit{
-					PTS:        pts,
-					NTP:        ntp,
-					RTPPackets: []*rtp.Packet{pkt},
-				})
+				strm.WriteRTPPacket(mediaSecondary, mediaSecondary.Formats[0], pkt, ntp, pts)
 			}
 		}
 	}
 
 	defer func() {
-		if subStream != nil {
+		if strm != nil {
 			s.Parent.SetNotReady(defs.PathSourceStaticSetNotReadyReq{})
 		}
 	}()
@@ -271,7 +262,7 @@ func (s *Source) runSecondary(params defs.StaticSourceRunParams) error {
 	r.ctx, r.ctxCancel = context.WithCancel(context.Background())
 	defer r.ctxCancel()
 
-	path, primaryStream, err := s.waitForPrimary(r, params)
+	path, origStream, err := s.waitForPrimary(r, params)
 	if err != nil {
 		return err
 	}
@@ -284,8 +275,8 @@ func (s *Source) runSecondary(params defs.StaticSourceRunParams) error {
 	}
 
 	res := s.Parent.SetReady(defs.PathSourceStaticSetReadyReq{
-		Desc:          &description.Session{Medias: []*description.Media{media}},
-		UseRTPPackets: true,
+		Desc:               &description.Session{Medias: []*description.Media{media}},
+		GenerateRTPPackets: false,
 	})
 	if res.Err != nil {
 		return res.Err
@@ -294,8 +285,8 @@ func (s *Source) runSecondary(params defs.StaticSourceRunParams) error {
 	rdr := &stream.Reader{Parent: s}
 
 	rdr.OnData(
-		primaryStream.Desc.Medias[1],
-		primaryStream.Desc.Medias[1].Formats[0],
+		origStream.Desc.Medias[1],
+		origStream.Desc.Medias[1].Formats[0],
 		func(u *unit.Unit) error {
 			pkt := u.RTPPackets[0]
 
@@ -305,16 +296,12 @@ func (s *Source) runSecondary(params defs.StaticSourceRunParams) error {
 			}
 			newPkt.PayloadType = 26
 
-			res.SubStream.WriteUnit(media, media.Formats[0], &unit.Unit{
-				PTS:        u.PTS,
-				NTP:        u.NTP,
-				RTPPackets: []*rtp.Packet{newPkt},
-			})
+			res.Stream.WriteRTPPacket(media, media.Formats[0], newPkt, u.NTP, u.PTS)
 			return nil
 		})
 
-	primaryStream.AddReader(rdr)
-	defer primaryStream.RemoveReader(rdr)
+	origStream.AddReader(rdr)
+	defer origStream.RemoveReader(rdr)
 
 	select {
 	case err = <-rdr.Error():
@@ -333,7 +320,7 @@ func (s *Source) waitForPrimary(
 	params defs.StaticSourceRunParams,
 ) (defs.Path, *stream.Stream, error) {
 	for {
-		path, primaryStream, err := s.Parent.AddReader(defs.PathAddReaderReq{
+		path, origStream, err := s.Parent.AddReader(defs.PathAddReaderReq{
 			Author: r,
 			AccessRequest: defs.PathAccessRequest{
 				Name:     params.Conf.RPICameraPrimaryName,
@@ -354,13 +341,13 @@ func (s *Source) waitForPrimary(
 			return nil, nil, err
 		}
 
-		return path, primaryStream, nil
+		return path, origStream, nil
 	}
 }
 
 // APISourceDescribe implements StaticSource.
-func (*Source) APISourceDescribe() *defs.APIPathSource {
-	return &defs.APIPathSource{
+func (*Source) APISourceDescribe() defs.APIPathSourceOrReader {
+	return defs.APIPathSourceOrReader{
 		Type: "rpiCameraSource",
 		ID:   "",
 	}

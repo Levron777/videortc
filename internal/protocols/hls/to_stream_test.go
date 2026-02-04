@@ -11,7 +11,6 @@ import (
 	"github.com/bluenviron/gortsplib/v5/pkg/description"
 	"github.com/bluenviron/gortsplib/v5/pkg/format"
 	"github.com/bluenviron/mediacommon/v2/pkg/formats/mpegts"
-	tscodecs "github.com/bluenviron/mediacommon/v2/pkg/formats/mpegts/codecs"
 	"github.com/bluenviron/mediamtx/internal/conf"
 	"github.com/bluenviron/mediamtx/internal/stream"
 	"github.com/bluenviron/mediamtx/internal/test"
@@ -29,7 +28,7 @@ func TestToStreamNoSupportedCodecs(t *testing.T) {
 
 func TestToStream(t *testing.T) {
 	track1 := &mpegts.Track{
-		Codec: &tscodecs.H264{},
+		Codec: &mpegts.CodecH264{},
 	}
 
 	s := &http.Server{
@@ -86,7 +85,6 @@ func TestToStream(t *testing.T) {
 	defer s.Shutdown(context.Background())
 
 	var strm *stream.Stream
-	var subStream *stream.SubStream
 	done := make(chan struct{})
 
 	r := &stream.Reader{Parent: test.NilLogger}
@@ -97,7 +95,7 @@ func TestToStream(t *testing.T) {
 		OnTracks: func(tracks []*gohlslib.Track) error {
 			medias, err2 := ToStream(c, tracks, &conf.Path{
 				UseAbsoluteTimestamp: true,
-			}, &subStream)
+			}, &strm)
 			require.NoError(t, err2)
 
 			require.Equal(t, []*description.Media{{
@@ -109,37 +107,21 @@ func TestToStream(t *testing.T) {
 			}}, medias)
 
 			strm = &stream.Stream{
-				Desc:              &description.Session{Medias: medias},
-				WriteQueueSize:    512,
-				RTPMaxPayloadSize: 1450,
-				Parent:            test.NilLogger,
+				WriteQueueSize:     512,
+				RTPMaxPayloadSize:  1450,
+				Desc:               &description.Session{Medias: medias},
+				GenerateRTPPackets: true,
+				Parent:             test.NilLogger,
 			}
 			err2 = strm.Initialize()
 			require.NoError(t, err2)
-
-			subStream = &stream.SubStream{
-				Stream:        strm,
-				UseRTPPackets: false,
-			}
-			err2 = subStream.Initialize()
-			require.NoError(t, err2)
-
-			n := 0
 
 			r.OnData(
 				medias[0],
 				medias[0].Formats[0],
 				func(u *unit.Unit) error {
-					switch n {
-					case 0:
-						require.True(t, u.NilPayload())
-					case 1:
-						require.Equal(t, time.Date(2018, 0o5, 20, 8, 17, 15, 0, time.UTC), u.NTP)
-						close(done)
-					default:
-						t.Error("should not happen")
-					}
-					n++
+					require.Equal(t, time.Date(2018, 0o5, 20, 8, 17, 15, 0, time.UTC), u.NTP)
+					close(done)
 					return nil
 				})
 

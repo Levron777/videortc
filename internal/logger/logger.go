@@ -3,8 +3,7 @@ package logger
 
 import (
 	"bytes"
-	"io"
-	"os"
+	"fmt"
 	"sync"
 	"time"
 
@@ -13,56 +12,47 @@ import (
 
 // Logger is a log handler.
 type Logger struct {
-	Level        Level
-	Destinations []Destination
-	Structured   bool
-	File         string
-	SysLogPrefix string
+	level Level
 
-	timeNow      func() time.Time
-	stdout       io.Writer
 	destinations []destination
 	mutex        sync.Mutex
 }
 
-// Initialize initializes Logger.
-func (l *Logger) Initialize() error {
-	if l.timeNow == nil {
-		l.timeNow = time.Now
-	}
-	if l.stdout == nil {
-		l.stdout = os.Stdout
+// New allocates a log handler.
+func New(level Level, destinations []Destination, filePath string, sysLogPrefix string) (*Logger, error) {
+	lh := &Logger{
+		level: level,
 	}
 
-	for _, destType := range l.Destinations {
+	for _, destType := range destinations {
 		switch destType {
 		case DestinationStdout:
-			l.destinations = append(l.destinations, newDestionationStdout(l.Structured, l.stdout))
+			lh.destinations = append(lh.destinations, newDestionationStdout())
 
 		case DestinationFile:
-			dest, err := newDestinationFile(l.Structured, l.File)
+			dest, err := newDestinationFile(filePath)
 			if err != nil {
-				l.Close()
-				return err
+				lh.Close()
+				return nil, err
 			}
-			l.destinations = append(l.destinations, dest)
+			lh.destinations = append(lh.destinations, dest)
 
 		case DestinationSyslog:
-			dest, err := newDestinationSyslog(l.SysLogPrefix)
+			dest, err := newDestinationSyslog(sysLogPrefix)
 			if err != nil {
-				l.Close()
-				return err
+				lh.Close()
+				return nil, err
 			}
-			l.destinations = append(l.destinations, dest)
+			lh.destinations = append(lh.destinations, dest)
 		}
 	}
 
-	return nil
+	return lh, nil
 }
 
 // Close closes a log handler.
-func (l *Logger) Close() {
-	for _, dest := range l.destinations {
+func (lh *Logger) Close() {
+	for _, dest := range lh.destinations {
 		dest.close()
 	}
 }
@@ -84,7 +74,7 @@ func itoa(i int, wid int) []byte {
 	return b[bp:]
 }
 
-func writePlainTime(buf *bytes.Buffer, t time.Time, useColor bool) {
+func writeTime(buf *bytes.Buffer, t time.Time, useColor bool) {
 	var intbuf bytes.Buffer
 
 	// date
@@ -142,20 +132,26 @@ func writeLevel(buf *bytes.Buffer, level Level, useColor bool) {
 			buf.WriteString("ERR")
 		}
 	}
+	buf.WriteByte(' ')
+}
+
+func writeContent(buf *bytes.Buffer, format string, args []any) {
+	fmt.Fprintf(buf, format, args...)
+	buf.WriteByte('\n')
 }
 
 // Log writes a log entry.
-func (l *Logger) Log(level Level, format string, args ...any) {
-	if level < l.Level {
+func (lh *Logger) Log(level Level, format string, args ...any) {
+	if level < lh.level {
 		return
 	}
 
-	l.mutex.Lock()
-	defer l.mutex.Unlock()
+	lh.mutex.Lock()
+	defer lh.mutex.Unlock()
 
-	t := l.timeNow()
+	t := time.Now()
 
-	for _, dest := range l.destinations {
+	for _, dest := range lh.destinations {
 		dest.log(t, level, format, args...)
 	}
 }

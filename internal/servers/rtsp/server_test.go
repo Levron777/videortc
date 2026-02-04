@@ -47,12 +47,7 @@ func TestServerPublish(t *testing.T) {
 	for _, ca := range []string{"basic", "digest", "basic+digest"} {
 		t.Run(ca, func(t *testing.T) {
 			var strm *stream.Stream
-			var reader *stream.Reader
-			defer func() {
-				strm.RemoveReader(reader)
-			}()
-			dataReceived := make(chan struct{})
-
+			streamCreated := make(chan struct{})
 			n := 0
 
 			pathManager := &test.PathManager{
@@ -81,45 +76,24 @@ func TestServerPublish(t *testing.T) {
 
 					return &conf.Path{}, nil
 				},
-				AddPublisherImpl: func(req defs.PathAddPublisherReq) (defs.Path, *stream.SubStream, error) {
+				AddPublisherImpl: func(req defs.PathAddPublisherReq) (defs.Path, *stream.Stream, error) {
 					require.Equal(t, "teststream", req.AccessRequest.Name)
 					require.Equal(t, "param=value", req.AccessRequest.Query)
 					require.True(t, req.AccessRequest.SkipAuth)
 
 					strm = &stream.Stream{
-						Desc:              req.Desc,
-						WriteQueueSize:    512,
-						RTPMaxPayloadSize: 1450,
-						Parent:            test.NilLogger,
+						WriteQueueSize:     512,
+						RTPMaxPayloadSize:  1450,
+						Desc:               req.Desc,
+						GenerateRTPPackets: true,
+						Parent:             test.NilLogger,
 					}
 					err := strm.Initialize()
 					require.NoError(t, err)
 
-					subStream := &stream.SubStream{
-						Stream:        strm,
-						UseRTPPackets: true,
-					}
-					err = subStream.Initialize()
-					require.NoError(t, err)
+					close(streamCreated)
 
-					reader = &stream.Reader{Parent: test.NilLogger}
-
-					reader.OnData(
-						strm.Desc.Medias[0],
-						strm.Desc.Medias[0].Formats[0],
-						func(u *unit.Unit) error {
-							require.Equal(t, unit.PayloadH264{
-								test.FormatH264.SPS,
-								test.FormatH264.PPS,
-								{5, 2, 3, 4},
-							}, u.Payload)
-							close(dataReceived)
-							return nil
-						})
-
-					strm.AddReader(reader)
-
-					return &dummyPath{}, subStream, nil
+					return &dummyPath{}, strm, nil
 				},
 			}
 
@@ -157,6 +131,28 @@ func TestServerPublish(t *testing.T) {
 			require.NoError(t, err)
 			defer source.Close()
 
+			<-streamCreated
+
+			r := &stream.Reader{Parent: test.NilLogger}
+
+			recv := make(chan struct{})
+
+			r.OnData(
+				strm.Desc.Medias[0],
+				strm.Desc.Medias[0].Formats[0],
+				func(u *unit.Unit) error {
+					require.Equal(t, unit.PayloadH264{
+						test.FormatH264.SPS,
+						test.FormatH264.PPS,
+						{5, 2, 3, 4},
+					}, u.Payload)
+					close(recv)
+					return nil
+				})
+
+			strm.AddReader(r)
+			defer strm.RemoveReader(r)
+
 			err = source.WritePacketRTP(media0, &rtp.Packet{
 				Header: rtp.Header{
 					Version:        2,
@@ -170,7 +166,7 @@ func TestServerPublish(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			<-dataReceived
+			<-recv
 		})
 	}
 }
@@ -181,19 +177,13 @@ func TestServerRead(t *testing.T) {
 			desc := &description.Session{Medias: []*description.Media{test.MediaH264}}
 
 			strm := &stream.Stream{
-				Desc:              desc,
-				WriteQueueSize:    512,
-				RTPMaxPayloadSize: 1450,
-				Parent:            test.NilLogger,
+				WriteQueueSize:     512,
+				RTPMaxPayloadSize:  1450,
+				Desc:               desc,
+				GenerateRTPPackets: true,
+				Parent:             test.NilLogger,
 			}
 			err := strm.Initialize()
-			require.NoError(t, err)
-
-			subStream := &stream.SubStream{
-				Stream:        strm,
-				UseRTPPackets: false,
-			}
-			err = subStream.Initialize()
 			require.NoError(t, err)
 
 			n := 0
@@ -313,7 +303,7 @@ func TestServerRead(t *testing.T) {
 			_, err = reader.Play(nil)
 			require.NoError(t, err)
 
-			subStream.WriteUnit(desc.Medias[0], desc.Medias[0].Formats[0], &unit.Unit{
+			strm.WriteUnit(desc.Medias[0], desc.Medias[0].Formats[0], &unit.Unit{
 				NTP: time.Time{},
 				Payload: unit.PayloadH264{
 					{5, 2, 3, 4}, // IDR
@@ -331,19 +321,13 @@ func TestServerRedirect(t *testing.T) {
 			desc := &description.Session{Medias: []*description.Media{test.MediaH264}}
 
 			strm := &stream.Stream{
-				Desc:              desc,
-				WriteQueueSize:    512,
-				RTPMaxPayloadSize: 1450,
-				Parent:            test.NilLogger,
+				WriteQueueSize:     512,
+				RTPMaxPayloadSize:  1450,
+				Desc:               desc,
+				GenerateRTPPackets: true,
+				Parent:             test.NilLogger,
 			}
 			err := strm.Initialize()
-			require.NoError(t, err)
-
-			subStream := &stream.SubStream{
-				Stream:        strm,
-				UseRTPPackets: true,
-			}
-			err = subStream.Initialize()
 			require.NoError(t, err)
 
 			pathManager := &test.PathManager{

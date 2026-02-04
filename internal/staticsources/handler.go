@@ -47,7 +47,7 @@ func resolveSource(s string, matches []string, query string) string {
 type staticSource interface {
 	logger.Writer
 	Run(defs.StaticSourceRunParams) error
-	APISourceDescribe() *defs.APIPathSource
+	APISourceDescribe() defs.APIPathSourceOrReader
 }
 
 type handlerPathManager interface {
@@ -300,7 +300,7 @@ func (s *Handler) ReloadConf(newConf *conf.Path) {
 }
 
 // APISourceDescribe instanceements source.
-func (s *Handler) APISourceDescribe() *defs.APIPathSource {
+func (s *Handler) APISourceDescribe() defs.APIPathSourceOrReader {
 	return s.instance.APISourceDescribe()
 }
 
@@ -309,7 +309,13 @@ func (s *Handler) SetReady(req defs.PathSourceStaticSetReadyReq) defs.PathSource
 	req.Res = make(chan defs.PathSourceStaticSetReadyRes)
 	select {
 	case s.chInstanceSetReady <- req:
-		return <-req.Res
+		res := <-req.Res
+
+		if res.Err == nil {
+			s.instance.Log(logger.Info, "ready: %s", defs.MediasInfo(req.Desc.Medias))
+		}
+
+		return res
 
 	case <-s.ctx.Done():
 		return defs.PathSourceStaticSetReadyRes{Err: fmt.Errorf("terminated")}

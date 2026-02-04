@@ -101,9 +101,9 @@ func (s *Source) runReader(conn *gortmplib.Client) error {
 		return err
 	}
 
-	var subStream *stream.SubStream
+	var stream *stream.Stream
 
-	medias, err := rtmp.ToStream(r, &subStream)
+	medias, err := rtmp.ToStream(r, &stream)
 	if err != nil {
 		return err
 	}
@@ -113,9 +113,9 @@ func (s *Source) runReader(conn *gortmplib.Client) error {
 	}
 
 	res := s.Parent.SetReady(defs.PathSourceStaticSetReadyReq{
-		Desc:          &description.Session{Medias: medias},
-		UseRTPPackets: false,
-		ReplaceNTP:    true,
+		Desc:               &description.Session{Medias: medias},
+		GenerateRTPPackets: true,
+		FillNTP:            true,
 	})
 	if res.Err != nil {
 		return res.Err
@@ -123,7 +123,7 @@ func (s *Source) runReader(conn *gortmplib.Client) error {
 
 	defer s.Parent.SetNotReady(defs.PathSourceStaticSetNotReadyReq{})
 
-	subStream = res.SubStream
+	stream = res.Stream
 
 	conn.NetConn().SetWriteDeadline(time.Time{})
 
@@ -137,8 +137,8 @@ func (s *Source) runReader(conn *gortmplib.Client) error {
 }
 
 // APISourceDescribe implements StaticSource.
-func (*Source) APISourceDescribe() *defs.APIPathSource {
-	return &defs.APIPathSource{
+func (*Source) APISourceDescribe() defs.APIPathSourceOrReader {
+	return defs.APIPathSourceOrReader{
 		Type: "rtmpSource",
 		ID:   "",
 	}

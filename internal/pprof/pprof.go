@@ -11,7 +11,6 @@ import (
 
 	"github.com/bluenviron/mediamtx/internal/auth"
 	"github.com/bluenviron/mediamtx/internal/conf"
-	"github.com/bluenviron/mediamtx/internal/defs"
 	"github.com/bluenviron/mediamtx/internal/logger"
 	"github.com/bluenviron/mediamtx/internal/protocols/httpp"
 )
@@ -104,10 +103,7 @@ func (pp *PPROF) middlewareAuth(ctx *gin.Context) {
 	if err != nil {
 		if err.AskCredentials {
 			ctx.Header("WWW-Authenticate", `Basic realm="mediamtx"`)
-			ctx.AbortWithStatusJSON(http.StatusUnauthorized, &defs.APIError{
-				Status: "error",
-				Error:  "authentication error",
-			})
+			ctx.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
 
@@ -116,10 +112,7 @@ func (pp *PPROF) middlewareAuth(ctx *gin.Context) {
 		// wait some seconds to delay brute force attacks
 		<-time.After(auth.PauseAfterError)
 
-		ctx.AbortWithStatusJSON(http.StatusUnauthorized, &defs.APIError{
-			Status: "error",
-			Error:  "authentication error",
-		})
+		ctx.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
 }

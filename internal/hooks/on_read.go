@@ -13,7 +13,7 @@ type OnReadParams struct {
 	ExternalCmdPool *externalcmd.Pool
 	Conf            *conf.Path
 	ExternalCmdEnv  externalcmd.Environment
-	Reader          defs.APIPathReader
+	Reader          defs.APIPathSourceOrReader
 	Query           string
 }
 

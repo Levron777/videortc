@@ -15,8 +15,8 @@ import (
 
 	"github.com/bluenviron/mediamtx/internal/auth"
 	"github.com/bluenviron/mediamtx/internal/conf"
+	"github.com/bluenviron/mediamtx/internal/counterdumper"
 	"github.com/bluenviron/mediamtx/internal/defs"
-	"github.com/bluenviron/mediamtx/internal/errordumper"
 	"github.com/bluenviron/mediamtx/internal/externalcmd"
 	"github.com/bluenviron/mediamtx/internal/hooks"
 	"github.com/bluenviron/mediamtx/internal/logger"
@@ -103,7 +103,7 @@ func (c *conn) run() { //nolint:dupl
 		RunOnConnectRestart: c.runOnConnectRestart,
 		RunOnDisconnect:     c.runOnDisconnect,
 		RTSPAddress:         c.rtspAddress,
-		Desc:                *c.APIReaderDescribe(),
+		Desc:                c.APIReaderDescribe(),
 	})
 	defer onDisconnectHook()
 
@@ -193,37 +193,40 @@ func (c *conn) runPublishReader(sconn srt.Conn, streamID *streamID, pathConf *co
 		return err
 	}
 
-	decodeErrors := &errordumper.Dumper{
-		OnReport: func(val uint64, last error) {
-			if val == 1 {
-				c.Log(logger.Warn, "decode error: %v", last)
-			} else {
-				c.Log(logger.Warn, "%d decode errors, last was: %v", val, last)
-			}
+	decodeErrors := &counterdumper.CounterDumper{
+		OnReport: func(val uint64) {
+			c.Log(logger.Warn, "%d decode %s",
+				val,
+				func() string {
+					if val == 1 {
+						return "error"
+					}
+					return "errors"
+				}())
 		},
 	}
 
 	decodeErrors.Start()
 	defer decodeErrors.Stop()
 
-	r.OnDecodeError(func(err error) {
-		decodeErrors.Add(err)
+	r.OnDecodeError(func(_ error) {
+		decodeErrors.Increase()
 	})
 
-	var subStream *stream.SubStream
+	var stream *stream.Stream
 
-	medias, err := mpegts.ToStream(r, &subStream, c)
+	medias, err := mpegts.ToStream(r, &stream, c)
 	if err != nil {
 		return err
 	}
 
 	var path defs.Path
-	path, subStream, err = c.pathManager.AddPublisher(defs.PathAddPublisherReq{
-		Author:        c,
-		Desc:          &description.Session{Medias: medias},
-		UseRTPPackets: false,
-		ReplaceNTP:    true,
-		ConfToCompare: pathConf,
+	path, stream, err = c.pathManager.AddPublisher(defs.PathAddPublisherReq{
+		Author:             c,
+		Desc:               &description.Session{Medias: medias},
+		GenerateRTPPackets: true,
+		FillNTP:            true,
+		ConfToCompare:      pathConf,
 		AccessRequest: defs.PathAccessRequest{
 			Name:     streamID.path,
 			Query:    streamID.query,
@@ -317,7 +320,7 @@ func (c *conn) runRead(streamID *streamID) error {
 		ExternalCmdPool: c.externalCmdPool,
 		Conf:            path.SafeConf(),
 		ExternalCmdEnv:  path.ExternalCmdEnv(),
-		Reader:          *c.APIReaderDescribe(),
+		Reader:          c.APIReaderDescribe(),
 		Query:           streamID.query,
 	})
 	defer onUnreadHook()
@@ -338,19 +341,16 @@ func (c *conn) runRead(streamID *streamID) error {
 }
 
 // APIReaderDescribe implements reader.
-func (c *conn) APIReaderDescribe() *defs.APIPathReader {
-	return &defs.APIPathReader{
+func (c *conn) APIReaderDescribe() defs.APIPathSourceOrReader {
+	return defs.APIPathSourceOrReader{
 		Type: "srtConn",
 		ID:   c.uuid.String(),
 	}
 }
 
 // APISourceDescribe implements source.
-func (c *conn) APISourceDescribe() *defs.APIPathSource {
-	return &defs.APIPathSource{
-		Type: "srtConn",
-		ID:   c.uuid.String(),
-	}
+func (c *conn) APISourceDescribe() defs.APIPathSourceOrReader {
+	return c.APIReaderDescribe()
 }
 
 func (c *conn) apiItem() *defs.APISRTConn {

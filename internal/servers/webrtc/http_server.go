@@ -49,8 +49,7 @@ func mergePathAndQuery(path string, rawQuery string) string {
 
 func writeError(ctx *gin.Context, statusCode int, err error) {
 	ctx.JSON(statusCode, &defs.APIError{
-		Status: "error",
-		Error:  err.Error(),
+		Error: err.Error(),
 	})
 }
 
@@ -139,10 +138,7 @@ func (s *httpServer) checkAuthOutsideSession(ctx *gin.Context, pathName string, 
 		if errors.As(err, &terr) {
 			if terr.AskCredentials {
 				ctx.Header("WWW-Authenticate", `Basic realm="mediamtx"`)
-				ctx.AbortWithStatusJSON(http.StatusUnauthorized, &defs.APIError{
-					Status: "error",
-					Error:  "authentication error",
-				})
+				ctx.Writer.WriteHeader(http.StatusUnauthorized)
 				return false
 			}
 
@@ -204,10 +200,7 @@ func (s *httpServer) onWHIPPost(ctx *gin.Context, pathName string, publish bool)
 		if errors.As(err, &terr) {
 			if terr.AskCredentials {
 				ctx.Header("WWW-Authenticate", `Basic realm="mediamtx"`)
-				ctx.AbortWithStatusJSON(http.StatusUnauthorized, &defs.APIError{
-					Status: "error",
-					Error:  "authentication error",
-				})
+				ctx.AbortWithStatus(http.StatusUnauthorized)
 				return
 			}
 
@@ -216,10 +209,7 @@ func (s *httpServer) onWHIPPost(ctx *gin.Context, pathName string, publish bool)
 			// wait some seconds to delay brute force attacks
 			<-time.After(auth.PauseAfterError)
 
-			ctx.AbortWithStatusJSON(http.StatusUnauthorized, &defs.APIError{
-				Status: "error",
-				Error:  "authentication error",
-			})
+			writeError(ctx, http.StatusUnauthorized, terr)
 			return
 		}
 
@@ -284,9 +274,7 @@ func (s *httpServer) onWHIPPatch(ctx *gin.Context, pathName string, rawSecret st
 		return
 	}
 
-	ctx.AbortWithStatusJSON(http.StatusNoContent, &defs.APIOK{
-		Status: "ok",
-	})
+	ctx.Writer.WriteHeader(http.StatusNoContent)
 }
 
 func (s *httpServer) onWHIPDelete(ctx *gin.Context, pathName string, rawSecret string) {
@@ -309,9 +297,7 @@ func (s *httpServer) onWHIPDelete(ctx *gin.Context, pathName string, rawSecret s
 		return
 	}
 
-	ctx.AbortWithStatusJSON(http.StatusOK, &defs.APIOK{
-		Status: "ok",
-	})
+	ctx.Writer.WriteHeader(http.StatusOK)
 }
 
 func (s *httpServer) onPage(ctx *gin.Context, pathName string, publish bool) {

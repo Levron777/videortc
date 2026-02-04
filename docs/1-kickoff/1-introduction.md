@@ -2,7 +2,7 @@
 
 Welcome to the MediaMTX documentation!
 
-_MediaMTX_ is a ready-to-use and zero-dependency live media server and media proxy. It has been conceived as a "media router" that routes media streams from one end to the other.
+MediaMTX is a ready-to-use and zero-dependency live media server and media proxy. It has been conceived as a "media router" that routes media streams from one end to the other.
 
 Main features:
 
@@ -11,7 +11,6 @@ Main features:
 - Streams are automatically converted from a protocol to another
 - Serve several streams at once in separate paths
 - Reload the configuration without disconnecting existing clients (hot reloading)
-- [Serve always-available streams](/docs/usage/always-available) even when the publisher is offline
 - [Record](/docs/usage/record) streams to disk in fMP4 or MPEG-TS format
 - [Playback](/docs/usage/playback) recorded streams
 - [Authenticate](/docs/usage/authentication) users with internal, HTTP or JWT authentication

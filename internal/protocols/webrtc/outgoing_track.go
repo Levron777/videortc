@@ -10,7 +10,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-// OutgoingTrack is an outgoing track.
+// OutgoingTrack is a WebRTC outgoing track
 type OutgoingTrack struct {
 	Caps webrtc.RTPCodecCapability
 

@@ -11,7 +11,6 @@ import (
 	"github.com/bluenviron/mediamtx/internal/logger"
 	"github.com/bluenviron/mediamtx/internal/stream"
 	"github.com/bluenviron/mediamtx/internal/test"
-	"github.com/bluenviron/mediamtx/internal/unit"
 	"github.com/pion/rtp"
 	"github.com/stretchr/testify/require"
 )
@@ -28,9 +27,7 @@ func TestFromStreamNoSupportedCodecs(t *testing.T) {
 		}),
 	}
 
-	pc := &PeerConnection{}
-
-	err := FromStream(desc, r, pc)
+	err := FromStream(desc, r, nil)
 	require.Equal(t, errNoSupportedCodecsFrom, err)
 }
 
@@ -88,6 +85,8 @@ func TestFromStream(t *testing.T) {
 
 func TestFromStreamResampleOpus(t *testing.T) {
 	strm := &stream.Stream{
+		WriteQueueSize:    512,
+		RTPMaxPayloadSize: 1450,
 		Desc: &description.Session{Medias: []*description.Media{
 			{
 				Type: description.MediaTypeAudio,
@@ -96,19 +95,10 @@ func TestFromStreamResampleOpus(t *testing.T) {
 				}},
 			},
 		}},
-		WriteQueueSize:    512,
-		RTPMaxPayloadSize: 1450,
-		ReplaceNTP:        false,
-		Parent:            test.NilLogger,
+		GenerateRTPPackets: true,
+		Parent:             test.NilLogger,
 	}
 	err := strm.Initialize()
-	require.NoError(t, err)
-
-	subStream := &stream.SubStream{
-		Stream:        strm,
-		UseRTPPackets: true,
-	}
-	err = subStream.Initialize()
 	require.NoError(t, err)
 
 	pc1 := &PeerConnection{
@@ -159,37 +149,29 @@ func TestFromStreamResampleOpus(t *testing.T) {
 	strm.AddReader(r)
 	defer strm.RemoveReader(r)
 
-	subStream.WriteUnit(strm.Desc.Medias[0], strm.Desc.Medias[0].Formats[0], &unit.Unit{
-		PTS: 0,
-		NTP: time.Now(),
-		RTPPackets: []*rtp.Packet{{
-			Header: rtp.Header{
-				Version:        2,
-				Marker:         true,
-				PayloadType:    111,
-				SequenceNumber: 1123,
-				Timestamp:      45343,
-				SSRC:           563424,
-			},
-			Payload: []byte{1},
-		}},
-	})
+	strm.WriteRTPPacket(strm.Desc.Medias[0], strm.Desc.Medias[0].Formats[0], &rtp.Packet{
+		Header: rtp.Header{
+			Version:        2,
+			Marker:         true,
+			PayloadType:    111,
+			SequenceNumber: 1123,
+			Timestamp:      45343,
+			SSRC:           563424,
+		},
+		Payload: []byte{1},
+	}, time.Now(), 0)
 
-	subStream.WriteUnit(strm.Desc.Medias[0], strm.Desc.Medias[0].Formats[0], &unit.Unit{
-		PTS: 0,
-		NTP: time.Now(),
-		RTPPackets: []*rtp.Packet{{
-			Header: rtp.Header{
-				Version:        2,
-				Marker:         true,
-				PayloadType:    111,
-				SequenceNumber: 1124,
-				Timestamp:      45343,
-				SSRC:           563424,
-			},
-			Payload: []byte{1},
-		}},
-	})
+	strm.WriteRTPPacket(strm.Desc.Medias[0], strm.Desc.Medias[0].Formats[0], &rtp.Packet{
+		Header: rtp.Header{
+			Version:        2,
+			Marker:         true,
+			PayloadType:    111,
+			SequenceNumber: 1124,
+			Timestamp:      45343,
+			SSRC:           563424,
+		},
+		Payload: []byte{1},
+	}, time.Now(), 0)
 
 	err = pc1.GatherIncomingTracks()
 	require.NoError(t, err)

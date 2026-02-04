@@ -33,38 +33,20 @@ var ErrConnNotFound = errors.New("connection not found")
 var ErrSessionNotFound = errors.New("session not found")
 
 func interfaceIsEmpty(i any) bool {
-	return reflect.ValueOf(i).Kind() != reflect.Pointer || reflect.ValueOf(i).IsNil()
+	return reflect.ValueOf(i).Kind() != reflect.Ptr || reflect.ValueOf(i).IsNil()
 }
 
 func printAddresses(srv *gortsplib.Server) string {
 	var ret []string
 
-	tmp := srv.RTSPAddress
-	if srv.TLSConfig == nil {
-		tmp += " (TCP/RTSP)"
-	} else {
-		tmp += " (TCP/RTSPS)"
-	}
-	ret = append(ret, tmp)
+	ret = append(ret, fmt.Sprintf("%s (TCP)", srv.RTSPAddress))
 
 	if srv.UDPRTPAddress != "" {
-		tmp = srv.UDPRTPAddress
-		if srv.TLSConfig == nil {
-			tmp += " (UDP/RTP)"
-		} else {
-			tmp += " (UDP/SRTP)"
-		}
-		ret = append(ret, tmp)
+		ret = append(ret, fmt.Sprintf("%s (UDP/RTP)", srv.UDPRTPAddress))
 	}
 
 	if srv.UDPRTCPAddress != "" {
-		tmp = srv.UDPRTCPAddress
-		if srv.TLSConfig == nil {
-			tmp += " (UDP/RTCP)"
-		} else {
-			tmp += " (UDP/SRTCP)"
-		}
-		ret = append(ret, tmp)
+		ret = append(ret, fmt.Sprintf("%s (UDP/RTCP)", srv.UDPRTCPAddress))
 	}
 
 	return strings.Join(ret, ", ")
@@ -78,7 +60,7 @@ type serverMetrics interface {
 type serverPathManager interface {
 	FindPathConf(req defs.PathFindPathConfReq) (*conf.Path, error)
 	Describe(req defs.PathDescribeReq) defs.PathDescribeRes
-	AddPublisher(_ defs.PathAddPublisherReq) (defs.Path, *stream.SubStream, error)
+	AddPublisher(_ defs.PathAddPublisherReq) (defs.Path, *stream.Stream, error)
 	AddReader(_ defs.PathAddReaderReq) (defs.Path, *stream.Stream, error)
 }
 
@@ -94,7 +76,8 @@ type Server struct {
 	ReadTimeout         conf.Duration
 	WriteTimeout        conf.Duration
 	WriteQueueSize      int
-	RTSPTransports      conf.RTSPTransports
+	UseUDP              bool
+	UseMulticast        bool
 	RTPAddress          string
 	RTCPAddress         string
 	MulticastIPRange    string
@@ -140,12 +123,12 @@ func (s *Server) Initialize() error {
 		AuthMethods:       s.AuthMethods,
 	}
 
-	if _, ok := s.RTSPTransports[gortsplib.ProtocolUDP]; ok {
+	if s.UseUDP {
 		s.srv.UDPRTPAddress = s.RTPAddress
 		s.srv.UDPRTCPAddress = s.RTCPAddress
 	}
 
-	if _, ok := s.RTSPTransports[gortsplib.ProtocolUDPMulticast]; ok {
+	if s.UseMulticast {
 		s.srv.MulticastIPRange = s.MulticastIPRange
 		s.srv.MulticastRTPPort = s.MulticastRTPPort
 		s.srv.MulticastRTCPPort = s.MulticastRTCPPort
@@ -407,11 +390,11 @@ func (s *Server) APIConnsList() (*defs.APIRTSPConnsList, error) {
 	defer s.mutex.RUnlock()
 
 	data := &defs.APIRTSPConnsList{
-		Items: []defs.APIRTSPConn{},
+		Items: []*defs.APIRTSPConn{},
 	}
 
 	for _, c := range s.conns {
-		data.Items = append(data.Items, *c.apiItem())
+		data.Items = append(data.Items, c.apiItem())
 	}
 
 	sort.Slice(data.Items, func(i, j int) bool {
@@ -452,11 +435,11 @@ func (s *Server) APISessionsList() (*defs.APIRTSPSessionList, error) {
 	defer s.mutex.RUnlock()
 
 	data := &defs.APIRTSPSessionList{
-		Items: []defs.APIRTSPSession{},
+		Items: []*defs.APIRTSPSession{},
 	}
 
 	for _, s := range s.sessions {
-		data.Items = append(data.Items, *s.apiItem())
+		data.Items = append(data.Items, s.apiItem())
 	}
 
 	sort.Slice(data.Items, func(i, j int) bool {

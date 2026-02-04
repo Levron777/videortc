@@ -58,32 +58,9 @@ func findMtxi(userData []amp4.IBox) *recordstore.Mtxi {
 	return nil
 }
 
-func segmentFMP4TracksAreEqual(tracks1 []*fmp4.InitTrack, tracks2 []*fmp4.InitTrack) bool {
-	if len(tracks1) != len(tracks2) {
-		return false
-	}
-
-	for i, track1 := range tracks1 {
-		track2 := tracks2[i]
-
-		if track1.ID != track2.ID ||
-			track1.TimeScale != track2.TimeScale ||
-			reflect.TypeOf(track1.Codec) != reflect.TypeOf(track2.Codec) {
-			return false
-		}
-	}
-
-	return true
-}
-
-func segmentFMP4CanBeConcatenated(
-	prevInit *fmp4.Init,
-	prevEnd time.Time,
-	curInit *fmp4.Init,
-	curStart time.Time,
-) bool {
-	mtxi1 := findMtxi(prevInit.UserData)
-	mtxi2 := findMtxi(curInit.UserData)
+func segmentFMP4AreConsecutive(init1 *fmp4.Init, init2 *fmp4.Init) bool {
+	mtxi1 := findMtxi(init1.UserData)
+	mtxi2 := findMtxi(init2.UserData)
 
 	switch {
 	case mtxi1 == nil && mtxi2 != nil:
@@ -92,15 +69,38 @@ func segmentFMP4CanBeConcatenated(
 	case mtxi1 != nil && mtxi2 == nil:
 		return false
 
-	case mtxi1 == nil && mtxi2 == nil: // legacy method
-		return segmentFMP4TracksAreEqual(prevInit.Tracks, curInit.Tracks) &&
-			!curStart.Before(prevEnd.Add(-concatenationTolerance)) &&
-			!curStart.After(prevEnd.Add(concatenationTolerance))
+	case mtxi1 == nil && mtxi2 == nil: // legacy method: compare tracks
+		if len(init1.Tracks) != len(init2.Tracks) {
+			return false
+		}
+
+		for i, track1 := range init1.Tracks {
+			track2 := init2.Tracks[i]
+
+			if track1.ID != track2.ID ||
+				track1.TimeScale != track2.TimeScale ||
+				reflect.TypeOf(track1.Codec) != reflect.TypeOf(track2.Codec) {
+				return false
+			}
+		}
+
+		return true
 
 	default:
 		return bytes.Equal(mtxi1.StreamID[:], mtxi2.StreamID[:]) &&
 			(mtxi1.SegmentNumber+1) == mtxi2.SegmentNumber
 	}
+}
+
+func segmentFMP4CanBeConcatenated(
+	prevInit *fmp4.Init,
+	prevEnd time.Time,
+	curInit *fmp4.Init,
+	curStart time.Time,
+) bool {
+	return segmentFMP4AreConsecutive(prevInit, curInit) &&
+		!curStart.Before(prevEnd.Add(-concatenationTolerance)) &&
+		!curStart.After(prevEnd.Add(concatenationTolerance))
 }
 
 func segmentFMP4ReadHeader(r io.ReadSeeker) (*fmp4.Init, time.Duration, error) {
@@ -146,28 +146,28 @@ func segmentFMP4ReadHeader(r io.ReadSeeker) (*fmp4.Init, time.Duration, error) {
 	// read mvhd
 
 	var mvhd amp4.Mvhd
-	_, err = amp4.Unmarshal(r, uint64(moovSize-8), &mvhd, amp4.Context{})
+	mvhdSize, err := amp4.Unmarshal(r, uint64(moovSize-8), &mvhd, amp4.Context{})
 	if err != nil {
 		return nil, 0, err
 	}
 
 	d := time.Duration(mvhd.DurationV0) * time.Second / time.Duration(mvhd.Timescale)
 
-	// read ftyp and moov
+	// read moov
 
-	_, err = r.Seek(0, io.SeekStart)
+	_, err = r.Seek(int64(-mvhdSize-8-8), io.SeekCurrent)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	buf = make([]byte, uint64(ftypSize+moovSize))
+	buf = make([]byte, uint64(moovSize))
 
 	_, err = io.ReadFull(r, buf)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	// pass ftyp and moov to fmp4.Init
+	// pass moov to fmp4.Init
 
 	var init fmp4.Init
 	err = init.Unmarshal(bytes.NewReader(buf))

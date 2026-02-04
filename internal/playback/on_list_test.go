@@ -13,8 +13,9 @@ import (
 	"time"
 
 	amp4 "github.com/abema/go-mp4"
+
 	"github.com/bluenviron/mediacommon/v2/pkg/formats/fmp4"
-	mcodecs "github.com/bluenviron/mediacommon/v2/pkg/formats/mp4/codecs"
+	"github.com/bluenviron/mediacommon/v2/pkg/formats/mp4"
 	"github.com/bluenviron/mediamtx/internal/auth"
 	"github.com/bluenviron/mediamtx/internal/conf"
 	"github.com/bluenviron/mediamtx/internal/test"
@@ -64,9 +65,8 @@ func TestOnList(t *testing.T) {
 				WriteTimeout: conf.Duration(10 * time.Second),
 				PathConfs: map[string]*conf.Path{
 					"mypath": {
-						Name:         "mypath",
-						RecordPath:   filepath.Join(dir, "%path/%Y-%m-%d_%H-%M-%S-%f"),
-						RecordFormat: conf.RecordFormatFMP4,
+						Name:       "mypath",
+						RecordPath: filepath.Join(dir, "%path/%Y-%m-%d_%H-%M-%S-%f"),
 					},
 				},
 				AuthManager: &test.AuthManager{
@@ -274,7 +274,7 @@ func TestOnListCachedDuration(t *testing.T) {
 				{
 					ID:        1,
 					TimeScale: 90000,
-					Codec: &mcodecs.H264{
+					Codec: &mp4.CodecH264{
 						SPS: test.FormatH264.SPS,
 						PPS: test.FormatH264.PPS,
 					},
@@ -295,9 +295,8 @@ func TestOnListCachedDuration(t *testing.T) {
 		WriteTimeout: conf.Duration(10 * time.Second),
 		PathConfs: map[string]*conf.Path{
 			"mypath": {
-				Name:         "mypath",
-				RecordPath:   filepath.Join(dir, "%path/%Y-%m-%d_%H-%M-%S-%f"),
-				RecordFormat: conf.RecordFormatFMP4,
+				Name:       "mypath",
+				RecordPath: filepath.Join(dir, "%path/%Y-%m-%d_%H-%M-%S-%f"),
 			},
 		},
 		AuthManager: test.NilAuthManager,

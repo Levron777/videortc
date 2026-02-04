@@ -1,34 +1,66 @@
 package conf
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/bluenviron/mediamtx/internal/conf/jsonwrapper"
 )
 
 // RTSPRangeType is the type used in the Range header.
-type RTSPRangeType string
+type RTSPRangeType int
 
 // supported values.
 const (
-	RTSPRangeTypeUndefined RTSPRangeType = ""
-	RTSPRangeTypeClock     RTSPRangeType = "clock"
-	RTSPRangeTypeNPT       RTSPRangeType = "npt"
-	RTSPRangeTypeSMPTE     RTSPRangeType = "smpte"
+	RTSPRangeTypeUndefined RTSPRangeType = iota
+	RTSPRangeTypeClock
+	RTSPRangeTypeNPT
+	RTSPRangeTypeSMPTE
 )
+
+// MarshalJSON implements json.Marshaler.
+func (d RTSPRangeType) MarshalJSON() ([]byte, error) {
+	var out string
+
+	switch d {
+	case RTSPRangeTypeClock:
+		out = "clock"
+
+	case RTSPRangeTypeNPT:
+		out = "npt"
+
+	case RTSPRangeTypeSMPTE:
+		out = "smpte"
+
+	default:
+		out = ""
+	}
+
+	return json.Marshal(out)
+}
 
 // UnmarshalJSON implements json.Unmarshaler.
 func (d *RTSPRangeType) UnmarshalJSON(b []byte) error {
-	type alias RTSPRangeType
-	if err := jsonwrapper.Unmarshal(b, (*alias)(d)); err != nil {
+	var in string
+	if err := jsonwrapper.Unmarshal(b, &in); err != nil {
 		return err
 	}
 
-	switch *d {
-	case RTSPRangeTypeUndefined, RTSPRangeTypeClock, RTSPRangeTypeNPT, RTSPRangeTypeSMPTE:
+	switch in {
+	case "clock":
+		*d = RTSPRangeTypeClock
+
+	case "npt":
+		*d = RTSPRangeTypeNPT
+
+	case "smpte":
+		*d = RTSPRangeTypeSMPTE
+
+	case "":
+		*d = RTSPRangeTypeUndefined
 
 	default:
-		return fmt.Errorf("invalid rtsp range type: '%s'", *d)
+		return fmt.Errorf("invalid rtsp range type: '%s'", in)
 	}
 
 	return nil

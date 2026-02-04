@@ -1,21 +1,18 @@
-//go:build !darwin && !windows
-
 package logger
 
 import (
 	"bytes"
-	"fmt"
-	"log/syslog"
+	"io"
 	"time"
 )
 
 type destinationSysLog struct {
-	syslog *syslog.Writer
+	syslog io.WriteCloser
 	buf    bytes.Buffer
 }
 
 func newDestinationSyslog(prefix string) (destination, error) {
-	syslog, err := syslog.New(syslog.LOG_DAEMON, prefix)
+	syslog, err := newSysLog(prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -25,23 +22,14 @@ func newDestinationSyslog(prefix string) (destination, error) {
 	}, nil
 }
 
-func (d *destinationSysLog) log(_ time.Time, level Level, format string, args ...any) {
+func (d *destinationSysLog) log(t time.Time, level Level, format string, args ...any) {
 	d.buf.Reset()
-
-	fmt.Fprintf(&d.buf, format, args...)
-
-	switch level {
-	case Debug:
-		d.syslog.Debug(d.buf.String()) //nolint:errcheck
-	case Info:
-		d.syslog.Info(d.buf.String()) //nolint:errcheck
-	case Warn:
-		d.syslog.Warning(d.buf.String()) //nolint:errcheck
-	case Error:
-		d.syslog.Err(d.buf.String()) //nolint:errcheck
-	}
+	writeTime(&d.buf, t, false)
+	writeLevel(&d.buf, level, false)
+	writeContent(&d.buf, format, args)
+	d.syslog.Write(d.buf.Bytes()) //nolint:errcheck
 }
 
 func (d *destinationSysLog) close() {
-	d.syslog.Close() //nolint:errcheck
+	d.syslog.Close()
 }
