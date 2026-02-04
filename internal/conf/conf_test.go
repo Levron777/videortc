@@ -461,6 +461,7 @@ func TestSampleConfFile(t *testing.T) {
 		conf2, confPath2, err := Load("", nil, nil)
 		require.NoError(t, err)
 		require.Equal(t, "", confPath2)
+		conf2.Paths = make(map[string]*Path)
 
 		require.Equal(t, conf1, conf2)
 	}()

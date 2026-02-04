@@ -51,7 +51,7 @@ func TestWatchMongoChanges(t *testing.T) {
 	defer cancel()
 
 	changeCount := 0
-	done, err := WatchMongoChanges(ctx, func(sources map[string]string) {
+	done, err := WatchMongoChanges(ctx, func(change MongoChange) {
 		changeCount++
 	})
 	require.NoError(t, err)

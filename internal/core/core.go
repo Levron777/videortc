@@ -196,11 +196,11 @@ func (p *Core) startMongoWatcher() {
 
 	debouncer := &changeDebouncer{}
 
-	done, err := conf.WatchMongoChanges(ctx, func(sources map[string]string) {
+	done, err := conf.WatchMongoChanges(ctx, func(change conf.MongoChange) {
 		p.Log(logger.Info, "MongoDB detected changes, applying...")
 
 		debouncer.trigger(func() {
-			p.applyMongoChanges(sources)
+			p.applyMongoChange(change)
 		})
 	})
 	if err != nil {
@@ -237,29 +237,99 @@ func (d *changeDebouncer) trigger(callback func()) {
 	})
 }
 
-func (p *Core) applyMongoChanges(sources map[string]string) {
-	newConf, reloadConf, _, err := conf.FetchSourcesAndReloadLoad(p.confPath, p.conf.Paths, sources)
-	if err != nil {
-		p.Log(logger.Error, "Failed to load new config: %v", err)
+func (p *Core) applyMongoChange(change conf.MongoChange) {
+	if change.Name == "" {
+		p.Log(logger.Warn, "Ignoring MongoDB change with empty name")
 		return
 	}
 
-	if reloadConf != nil {
-		p.Log(logger.Info, "Reloading old config with MongoDB changes")
-		err = p.reloadConf(reloadConf, false)
-		if err != nil {
-			p.Log(logger.Error, "Failed to reload config with changes: %v", err)
-			return
+	p.Log(logger.Info, "Processing MongoDB %s for source: %s (Source: %s, IsDisabled: %v)",
+		change.OperationType, change.Name, change.Source, change.IsDisabled)
+
+	switch change.OperationType {
+	case "insert", "replace":
+		if change.IsDisabled || change.Source == "" {
+			p.removeMongoPath(change.Name)
+		} else {
+			p.addOrUpdateMongoPath(change.Name, change.Source)
+		}
+
+	case "update":
+		if change.IsDisabled || change.Source == "" {
+			p.removeMongoPath(change.Name)
+		} else {
+			p.addOrUpdateMongoPath(change.Name, change.Source)
+		}
+
+	case "delete":
+		p.removeMongoPath(change.Name)
+
+	default:
+		p.Log(logger.Warn, "Unknown MongoDB operation type: %s", change.OperationType)
+	}
+}
+
+func (p *Core) addOrUpdateMongoPath(name string, source string) {
+	oldPath, exists := p.conf.Paths[name]
+	if exists && oldPath != nil && oldPath.Source == source {
+		p.Log(logger.Debug, "Source unchanged for path %s, skipping", name)
+		return
+	}
+
+	newConf := p.conf.Clone()
+	newConf.Paths = make(map[string]*conf.Path, len(p.conf.Paths)+1)
+
+	for k, v := range p.conf.Paths {
+		newConf.Paths[k] = v
+	}
+
+	if exists && oldPath != nil {
+		newConf.Paths[name] = oldPath
+		newConf.Paths[name].Source = source
+	} else {
+		newConf.Paths[name] = &conf.Path{Source: source}
+	}
+
+	p.Log(logger.Info, "Adding/updating MongoDB path: %s -> %s", name, source)
+
+	err := p.reloadConf(newConf, false)
+	if err != nil {
+		p.Log(logger.Error, "Failed to reload config for path %s: %v", name, err)
+		return
+	}
+
+	p.Log(logger.Info, "MongoDB path successfully added/updated: %s", name)
+}
+
+func (p *Core) removeMongoPath(name string) {
+	_, exists := p.conf.Paths[name]
+	if !exists {
+		p.Log(logger.Debug, "Path %s not found, skipping removal", name)
+		return
+	}
+
+	newConf := p.conf.Clone()
+	newConf.Paths = make(map[string]*conf.Path, len(p.conf.Paths))
+
+	for k, v := range p.conf.Paths {
+		if k != name {
+			newConf.Paths[k] = v
 		}
 	}
 
-	err = p.reloadConf(newConf, false)
+	if newConf.OptionalPaths != nil {
+		delete(newConf.OptionalPaths, name)
+	}
+
+	p.Log(logger.Info, "Removing MongoDB path: %s", name)
+
+	err := p.reloadConf(newConf, false)
 	if err != nil {
-		p.Log(logger.Error, "Failed to reload config: %v", err)
+		p.Log(logger.Error, "Failed to reload config after removing path %s: %v", name, err)
 		return
 	}
 
-	p.Log(logger.Info, "Sources successfully updated from MongoDB")
+	p.Log(logger.Info, "MongoDB path successfully removed: %s", name)
 }
 
 // Close closes Core and waits for all goroutines to return.

@@ -839,24 +839,40 @@ func (conf *Conf) Validate(l logger.Writer) error {
 
 	log.Printf("DEBUG: Loaded %d sources from MongoDB", len(vals))
 
-	if vals == nil {
-		return nil
+	conf.Paths = make(map[string]*Path, len(conf.OptionalPaths))
+	if vals != nil {
+		conf.Paths = make(map[string]*Path, len(conf.OptionalPaths)+len(vals))
 	}
 
-	//PATHS IS FILED FROM FILE HERE!
-	conf.Paths = make(map[string]*Path, len(vals))
+	defaultPath := conf.OptionalPaths["default_path"]
+	if defaultPath == nil {
+		defaultPath = &OptionalPath{}
+		defaultPath.Values = newOptionalPathValues()
+	}
 
-	conf.Paths["default_path"] = newPath(&conf.PathDefaults, conf.OptionalPaths["default_path"])
+	conf.Paths["default_path"] = newPath(&conf.PathDefaults, defaultPath)
 
-	for name, source := range vals {
+	if vals != nil {
+		for name, source := range vals {
 
-		pconf := newPath(&conf.PathDefaults, conf.OptionalPaths["default_path"])
-		pconf.Source = source
-		conf.Paths[name] = pconf
-		log.Printf("Path added from MongoDB: %s -> %s", name, source)
+			pconf := newPath(&conf.PathDefaults, defaultPath)
+			pconf.Source = source
+			conf.Paths[name] = pconf
+			log.Printf("Path added from MongoDB: %s -> %s", name, source)
+		}
 	}
 
 	for _, name := range sortedKeys(conf.OptionalPaths) {
+		if name != "default_path" {
+			optionalPath := conf.OptionalPaths[name]
+			if optionalPath == nil {
+				optionalPath = &OptionalPath{}
+				optionalPath.Values = newOptionalPathValues()
+			}
+			pconf := newPath(&conf.PathDefaults, optionalPath)
+			conf.Paths[name] = pconf
+		}
+
 		err := conf.Paths[name].validate(conf, name, deprecatedCredentialsMode, l)
 		if err != nil {
 			return err

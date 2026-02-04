@@ -31,6 +31,14 @@ type mongoSourceDoc struct {
 	IsDisabled bool   `bson:"IsDisabled"`
 }
 
+// MongoChange represents a single change event from MongoDB change stream.
+type MongoChange struct {
+	OperationType string // insert, update, delete, replace
+	Name          string
+	Source        string
+	IsDisabled    bool
+}
+
 // Global state
 var (
 	MongoClient   *mongo.Client
@@ -92,7 +100,12 @@ func constructMongoURI(conn *MongoConnection) string {
 // FetchSourcesFromMongo retrieves all active sources from MongoDB.
 // Only returns documents where Source is not empty and IsDisabled is false.
 // Uses cursor with batch size for efficient handling of up to 100k records.
+// Returns nil if MongoDB is not initialized.
 func FetchSourcesFromMongo() map[string]string {
+	if MongoColl == nil {
+		return nil
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -136,7 +149,7 @@ func FetchSourcesFromMongo() map[string]string {
 
 // WatchMongoChanges subscribes to MongoDB Change Streams and calls onChange callback
 // when active sources configuration changes. Handles reconnection with resume token.
-func WatchMongoChanges(ctx context.Context, onChange func(map[string]string)) (<-chan struct{}, error) {
+func WatchMongoChanges(ctx context.Context, onChange func(MongoChange)) (<-chan struct{}, error) {
 	done := make(chan struct{})
 
 	pipeline := mongo.Pipeline{
@@ -193,14 +206,17 @@ func WatchMongoChanges(ctx context.Context, onChange func(map[string]string)) (<
 	return done, nil
 }
 
-func processChangeStream(ctx context.Context, stream *mongo.ChangeStream, onChange func(map[string]string)) {
+func processChangeStream(ctx context.Context, stream *mongo.ChangeStream, onChange func(MongoChange)) {
 	for stream.Next(ctx) {
 		var change struct {
 			OperationType string `bson:"operationType"`
 			DocumentKey   struct {
-				ID string `bson:"_id"`
+				ID primitive.ObjectID `bson:"_id"`
 			} `bson:"documentKey"`
 			FullDocument *mongoSourceDoc `bson:"fullDocument"`
+			UpdateDesc   struct {
+				UpdatedFields map[string]interface{} `bson:"updatedFields"`
+			} `bson:"updateDescription"`
 		}
 
 		if err := stream.Decode(&change); err != nil {
@@ -210,8 +226,35 @@ func processChangeStream(ctx context.Context, stream *mongo.ChangeStream, onChan
 
 		setResumeToken(stream.ResumeToken())
 
-		activeSources := FetchSourcesFromMongo()
-		onChange(activeSources)
+		mongoChange := MongoChange{
+			OperationType: change.OperationType,
+			Name:          "",
+			Source:        "",
+			IsDisabled:    false,
+		}
+
+		switch change.OperationType {
+		case "insert", "replace":
+			if change.FullDocument != nil {
+				mongoChange.Name = change.FullDocument.Name
+				mongoChange.Source = change.FullDocument.Source
+				mongoChange.IsDisabled = change.FullDocument.IsDisabled
+			}
+
+		case "update":
+			if change.FullDocument != nil {
+				mongoChange.Name = change.FullDocument.Name
+				mongoChange.Source = change.FullDocument.Source
+				mongoChange.IsDisabled = change.FullDocument.IsDisabled
+			}
+
+		case "delete":
+			docID := change.DocumentKey.ID.Hex()
+			log.Printf("Document deleted with ID: %s", docID)
+			mongoChange.Name = docID
+		}
+
+		onChange(mongoChange)
 	}
 
 	if err := stream.Err(); err != nil {
