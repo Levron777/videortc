@@ -85,15 +85,14 @@ func InitMongo() {
 }
 
 func constructMongoURI(conn *MongoConnection) string {
-	uri := "mongodb://127.0.0.1:27017/?replicaSet=rs0&directConnection=true" //uri := "mongodb://"
-	//if conn.Username != "" && conn.Password != "" {
-	//	uri += conn.Username + ":" + conn.Password + "@"
-	//}
-	//uri += conn.Host
-	//if conn.Port != "" {
-	//	uri += ":" + conn.Port
-	//}
-	//uri += "/" + conn.Database
+	uri := "mongodb://127.0.0.1:27017/?replicaSet=rs0&directConnection=false"
+	if conn.Host != "" {
+		uri = "mongodb://" + conn.Host
+		if conn.Port != "" {
+			uri += ":" + conn.Port
+		}
+		uri += "/" + conn.Database + "?replicaSet=rs0"
+	}
 	return uri
 }
 
