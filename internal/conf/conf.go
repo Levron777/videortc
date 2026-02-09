@@ -262,6 +262,7 @@ type Conf struct {
 	AuthInternalUsers         []AuthInternalUser           `json:"authInternalUsers"`
 	AuthHTTPAddress           string                       `json:"authHTTPAddress"`
 	ExternalAuthenticationURL *string                      `json:"externalAuthenticationURL,omitempty"` // deprecated
+	AuthHTTPFingerprint       string                       `json:"authHTTPFingerprint"`
 	AuthHTTPExclude           []AuthInternalUserPermission `json:"authHTTPExclude"`
 	AuthJWTJWKS               string                       `json:"authJWTJWKS"`
 	AuthJWTJWKSFingerprint    string                       `json:"authJWTJWKSFingerprint"`
@@ -417,7 +418,7 @@ func (conf *Conf) setDefaults() {
 	conf.ReadTimeout = 10 * Duration(time.Second)
 	conf.WriteTimeout = 10 * Duration(time.Second)
 	conf.WriteQueueSize = 512
-	conf.UDPMaxPayloadSize = 1472
+	conf.UDPMaxPayloadSize = 1452
 
 	// Authentication
 	conf.AuthMethod = AuthMethodInternal
