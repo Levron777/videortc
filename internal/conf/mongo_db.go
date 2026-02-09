@@ -59,7 +59,7 @@ func InitMongo() {
 
 	uri := constructMongoURI(&conn)
 	if conn.Collection == "" {
-		conn.Collection = "VideoSource"
+		conn.Collection = "VideoSource" // TODO: need change to actual
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -85,7 +85,7 @@ func InitMongo() {
 }
 
 func constructMongoURI(conn *MongoConnection) string {
-	uri := "mongodb://127.0.0.1:27017/?replicaSet=rs0&directConnection=false"
+	uri := "mongodb://127.0.0.1:27017/?replicaSet=rs0&directConnection=false" // TODO: need change to actual
 	if conn.Host != "" {
 		uri = "mongodb://" + conn.Host
 		if conn.Port != "" {
