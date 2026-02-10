@@ -194,14 +194,12 @@ func New(args []string) (*Core, bool) {
 func (p *Core) startMongoWatcher() {
 	ctx := p.ctx
 
-	debouncer := &changeDebouncer{}
+	batcher := &changeBatcher{
+		applyFunc: p.applyMongoChange,
+	}
 
 	done, err := conf.WatchMongoChanges(ctx, func(change conf.MongoChange) {
-		p.Log(logger.Info, "MongoDB detected changes, applying...")
-
-		debouncer.trigger(func() {
-			p.applyMongoChange(change)
-		})
+		batcher.add(change)
 	})
 	if err != nil {
 		p.Log(logger.Error, "MongoDB watcher error: %v", err)
@@ -212,29 +210,37 @@ func (p *Core) startMongoWatcher() {
 	p.Log(logger.Info, "MongoDB watcher stopped: context canceled")
 }
 
-type changeDebouncer struct {
-	mu      sync.Mutex
-	timer   *time.Timer
-	pending bool
+type changeBatcher struct {
+	mu        sync.Mutex
+	timer     *time.Timer
+	changes   []conf.MongoChange
+	applyFunc func(conf.MongoChange)
 }
 
-func (d *changeDebouncer) trigger(callback func()) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
+func (b *changeBatcher) add(change conf.MongoChange) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
-	if d.timer != nil {
-		d.timer.Stop()
+	b.changes = append(b.changes, change)
+
+	if b.timer != nil {
+		b.timer.Stop()
 	}
 
-	d.pending = true
-	d.timer = time.AfterFunc(1*time.Second, func() {
-		d.mu.Lock()
-		if d.pending {
-			callback()
-			d.pending = false
-		}
-		d.mu.Unlock()
+	b.timer = time.AfterFunc(1*time.Second, func() {
+		b.process()
 	})
+}
+
+func (b *changeBatcher) process() {
+	b.mu.Lock()
+	changes := b.changes
+	b.changes = nil
+	b.mu.Unlock()
+
+	for _, change := range changes {
+		b.applyFunc(change)
+	}
 }
 
 func (p *Core) applyMongoChange(change conf.MongoChange) {
